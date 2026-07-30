@@ -114,7 +114,7 @@ app.addEventListener("pointerleave", onPointerLeave);
 window.addEventListener("keydown", onKeyDown);
 reducedMotion.addEventListener("change", () => render());
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) {
+  if (!previewMode && !document.hidden) {
     reconcilePresentation();
   }
   scheduleMediaProgressTick();
@@ -561,6 +561,7 @@ function refreshMediaProgress(): void {
   const ratio = Math.min(1, Math.max(0, position / media.durationMs));
   const progress = app.querySelector<HTMLElement>("[data-media-progress]");
   const elapsed = app.querySelector<HTMLElement>("[data-media-elapsed]");
+  const remaining = app.querySelector<HTMLElement>("[data-media-remaining]");
   if (progress) {
     progress.style.transform = `scaleX(${ratio})`;
     progress.parentElement?.setAttribute("aria-valuenow", String(Math.floor(position / 1000)));
@@ -570,6 +571,9 @@ function refreshMediaProgress(): void {
     );
   }
   if (elapsed) elapsed.textContent = formatPlaybackTime(position);
+  if (remaining) {
+    remaining.textContent = `−${formatPlaybackTime(Math.max(0, media.durationMs - position))}`;
+  }
 }
 
 function reconcilePresentation(
@@ -907,12 +911,12 @@ function renderCompactMedia(motionClass: string): string {
     <div class="atoll-shell compact compact--media${motionClass}" role="group" aria-label="Current media controls">
       <button class="compact-media__open" type="button" data-action="open-media" aria-label="Open media controls for ${escapeHtml(current.title)}">
         ${renderCover(current, "cover cover--compact")}
-        <span class="compact__copy">
+        <span class="compact__copy" title="${escapeAttribute(`${current.title} — ${current.artist}`)}">
           <strong>${escapeHtml(current.title)}</strong>
           <small>${escapeHtml(current.artist)}</small>
         </span>
       </button>
-      <button class="compact-media__toggle ${pendingMediaCommand === "toggle" ? "is-pending" : ""}" type="button" data-action="media-toggle" aria-label="${toggleLabel}" aria-busy="${pendingMediaCommand === "toggle"}" ${!current.canPlayPause ? "disabled" : ""} ${commandPending ? 'aria-disabled="true"' : ""}>
+      <button class="compact-media__toggle ${pendingMediaCommand === "toggle" ? "is-pending" : ""}" type="button" data-action="media-toggle" aria-label="${toggleLabel}" aria-pressed="${current.playing}" aria-busy="${pendingMediaCommand === "toggle"}" ${!current.canPlayPause ? "disabled" : ""} ${commandPending ? 'aria-disabled="true"' : ""}>
         ${icon(current.playing ? "pause" : "play")}
       </button>
       <span class="sr-only" role="status" aria-live="polite">${escapeHtml(mediaCommandFeedback?.message ?? "")}</span>
@@ -1036,7 +1040,7 @@ function renderMediaPanel(): string {
   return `
     <header class="expanded__header expanded__header--media">
       ${renderCover(current, "cover cover--expanded")}
-      <button class="media-title" type="button" data-action="collapse" aria-label="Collapse Atoll">
+      <button class="media-title" type="button" data-action="collapse" aria-label="Collapse Atoll" title="${escapeAttribute(`${current.title} — ${current.artist}`)}">
         <strong>${escapeHtml(current.title)}</strong>
         <small>${escapeHtml(current.artist)}</small>
       </button>
@@ -1169,12 +1173,13 @@ function renderMediaProgress(current: MediaStatus): string {
   const ratio = Math.min(1, Math.max(0, position / current.durationMs));
   const elapsedSeconds = Math.floor(position / 1000);
   const durationSeconds = Math.floor(current.durationMs / 1000);
+  const remaining = Math.max(0, current.durationMs - position);
   return `
     <div class="media-progress">
       <span class="media-progress__track" role="progressbar" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="${durationSeconds}" aria-valuenow="${elapsedSeconds}" aria-valuetext="${formatPlaybackTime(position)} of ${formatPlaybackTime(current.durationMs)}">
         <span class="media-progress__fill" data-media-progress style="transform:scaleX(${ratio})"></span>
       </span>
-      <span class="media-progress__time"><span data-media-elapsed>${formatPlaybackTime(position)}</span><span aria-hidden="true"> / </span><span>${formatPlaybackTime(current.durationMs)}</span></span>
+      <span class="media-progress__time" aria-hidden="true"><span data-media-elapsed>${formatPlaybackTime(position)}</span><span data-media-remaining>−${formatPlaybackTime(remaining)}</span></span>
     </div>`;
 }
 

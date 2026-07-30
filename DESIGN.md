@@ -2,28 +2,28 @@
 name: Atoll
 description: Your status, surfaced.
 colors:
-  reef-black: "#0b0d10"
-  raised-basin: "#15181d"
-  soft-basin: "#1b1f25"
-  foam-white: "#f5f7fa"
-  mist-text: "#abb4c0"
-  quiet-slate: "#78828e"
+  reef-black: "#0a0d0f"
+  raised-basin: "#151a1c"
+  soft-basin: "#20272a"
+  foam-white: "#f5f7f7"
+  mist-text: "#aab5b2"
+  quiet-slate: "#7f8c88"
   tide-mint: "#65d6c5"
-  tide-mint-bright: "#81e3d4"
+  tide-mint-bright: "#79dfcf"
   tide-ink: "#071511"
   timer-sand: "#e6bd68"
   coral-finished: "#f07b6d"
-  edge-catchlight: "rgba(255, 255, 255, 0.11)"
-  meter-track: "#353b43"
+  edge-catchlight: "rgba(255, 255, 255, 0.10)"
+  meter-track: "#35413e"
   completion-muted: "#d8aaa4"
   completion-ink: "#2a0e0a"
   switch-track: "#353b44"
   switch-thumb: "#d8dde4"
-  light-reef: "#f2f5f4"
-  light-raised-basin: "#ffffff"
-  light-soft-basin: "#e6ece9"
+  light-reef: "#edf2f0"
+  light-raised-basin: "#f7faf8"
+  light-soft-basin: "#dce6e2"
   light-foam: "#14201d"
-  light-mist: "#4f625d"
+  light-mist: "#52645f"
   light-tide: "#16786c"
 typography:
   display:
@@ -43,7 +43,7 @@ typography:
     fontSize: "12px"
     fontWeight: 620
     lineHeight: 1.33
-    letterSpacing: "-0.012em"
+    letterSpacing: "-0.01em"
   label:
     fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "9.5px"
@@ -114,7 +114,7 @@ components:
     textColor: "{colors.foam-white}"
     typography: "{typography.body}"
     rounded: "{rounded.expanded}"
-    padding: "12px 14px 10px"
+    padding: "10px 14px 8px"
     size: "408px × 160px"
   button-primary:
     backgroundColor: "{colors.tide-mint}"
@@ -131,7 +131,7 @@ components:
     padding: "0 12px"
     height: "32px"
   card-media:
-    backgroundColor: "{colors.raised-basin}"
+    backgroundColor: "transparent; {colors.raised-basin} on hover"
     textColor: "{colors.foam-white}"
     rounded: "{rounded.card}"
     padding: "7px 8px"
@@ -176,7 +176,7 @@ The palette is a submerged neutral field with one cool living accent and two nar
 ### Neutral
 
 - **Reef Black:** The continuous outer shell.
-- **Raised Basin:** Interactive rows, media controls, and secondary buttons.
+- **Raised Basin:** Hovered rows and secondary buttons.
 - **Soft Basin:** Gentle hover and nested-control separation.
 - **Foam White:** Primary text and high-confidence values.
 - **Mist Text:** Supporting labels and metadata.
@@ -213,12 +213,12 @@ The native host, not CSS media queries, owns display scaling and repositioning. 
 
 ## Elevation & Depth
 
-Atoll uses a hybrid of tonal layering and one ambient shell shadow. Nested surfaces are differentiated primarily by Reef Black, Raised Basin, and Soft Basin. A faint internal top highlight keeps the object legible against dark windows without creating a game-HUD border.
+Atoll uses tonal layering and a precise inset edge. Nested surfaces are differentiated primarily by Reef Black, Raised Basin, and Soft Basin. A faint internal top highlight and lower lowlight keep the object legible without creating a game-HUD border. The exact-fit transparent host does not reserve an external shadow gutter.
 
 ### Shadow Vocabulary
 
-- **Ambient Shell:** `0 12px 34px rgba(0, 0, 0, 0.42)` gives the floating shell quiet separation from the application below.
-- **Top Catchlight:** `inset 0 1px rgba(255, 255, 255, 0.08)` describes the upper material edge.
+- **Shell Edge:** A low-contrast one-pixel inset edge separates Light Reef from bright wallpaper and Reef Black from dark windows.
+- **Top Catchlight:** `inset 0 1px rgba(255, 255, 255, 0.09)` describes the upper material edge.
 
 **The Basin Rule.** Add depth by changing surface tone before adding another shadow.
 
@@ -245,7 +245,7 @@ The logo is a sturdy incomplete elliptical ring with negative space. It must rem
 ### Cards / Containers
 
 - **Corner Style:** Generous nested-card curve.
-- **Background:** Raised Basin at rest, Soft Basin or a slightly brighter neutral on hover.
+- **Background:** Media rows are transparent at rest and lift to Raised Basin on hover; denser setting rows may use a basin at rest.
 - **Shadow Strategy:** No nested shadows.
 - **Internal Padding:** Tight, vertically centered spacing suited to the fixed-height shell.
 
