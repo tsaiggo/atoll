@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Local capabilities for the Atoll shell.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

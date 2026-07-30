@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-30T18:56:42.2019588+08:00",
+  "title": "Design System: Atoll",
+  "extensions": {
+    "colorMeta": {
+      "reef-black": {
+        "role": "neutral",
+        "displayName": "Reef Black",
+        "canonical": "#0b0d10",
+        "tonalRamp": ["#08090b", "#0b0d10", "#15181d", "#252a31", "#444c57", "#747e8b", "#b8c0c9", "#f5f7fa"]
+      },
+      "raised-basin": {
+        "role": "neutral",
+        "displayName": "Raised Basin",
+        "canonical": "#15181d",
+        "tonalRamp": ["#090b0d", "#101216", "#15181d", "#252a31", "#48505b", "#7b8591", "#bdc4cc", "#f4f6f8"]
+      },
+      "soft-basin": {
+        "role": "neutral",
+        "displayName": "Soft Basin",
+        "canonical": "#1b1f25",
+        "tonalRamp": ["#0a0c0f", "#13161a", "#1b1f25", "#2c323a", "#505965", "#838d99", "#c1c7ce", "#f5f7f9"]
+      },
+      "foam-white": {
+        "role": "neutral",
+        "displayName": "Foam White",
+        "canonical": "#f5f7fa",
+        "tonalRamp": ["#17191c", "#30343a", "#555b64", "#7e8792", "#aab2bd", "#cdd2d9", "#e7eaee", "#f5f7fa"]
+      },
+      "mist-text": {
+        "role": "neutral",
+        "displayName": "Mist Text",
+        "canonical": "#abb4c0",
+        "tonalRamp": ["#15191d", "#2d343b", "#4c5863", "#697784", "#8795a2", "#abb4c0", "#d0d5db", "#f2f4f6"]
+      },
+      "quiet-slate": {
+        "role": "neutral",
+        "displayName": "Quiet Slate",
+        "canonical": "#78828e",
+        "tonalRamp": ["#121619", "#283039", "#414c57", "#5d6975", "#78828e", "#9da5ae", "#c7ccd1", "#f0f2f4"]
+      },
+      "tide-mint": {
+        "role": "primary",
+        "displayName": "Tide Mint",
+        "canonical": "#65d6c5",
+        "tonalRamp": ["#06251f", "#0b4036", "#146052", "#258777", "#43ad9c", "#65d6c5", "#abe9df", "#ebfaf7"]
+      },
+      "tide-mint-bright": {
+        "role": "primary",
+        "displayName": "Bright Tide Mint",
+        "canonical": "#81e3d4",
+        "tonalRamp": ["#082721", "#0d443a", "#176559", "#2b8e7e", "#51b9a9", "#81e3d4", "#bcefe7", "#eefbf9"]
+      },
+      "tide-ink": {
+        "role": "neutral",
+        "displayName": "Tide Ink",
+        "canonical": "#071511",
+        "tonalRamp": ["#040b09", "#071511", "#112c25", "#255247", "#487a6e", "#7fa69d", "#bfd2cd", "#f0f7f5"]
+      },
+      "timer-sand": {
+        "role": "secondary",
+        "displayName": "Timer Sand",
+        "canonical": "#e6bd68",
+        "tonalRamp": ["#2b2008", "#4a3710", "#70541e", "#98752f", "#bd9748", "#e6bd68", "#f2dba6", "#fcf6e8"]
+      },
+      "coral-finished": {
+        "role": "tertiary",
+        "displayName": "Coral Finished",
+        "canonical": "#f07b6d",
+        "tonalRamp": ["#35100d", "#5b1c17", "#852d25", "#af453a", "#d45e52", "#f07b6d", "#f6b3aa", "#fdecea"]
+      },
+      "edge-catchlight": {
+        "role": "neutral",
+        "displayName": "Edge Catchlight",
+        "canonical": "rgba(255, 255, 255, 0.11)",
+        "tonalRamp": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.05)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.11)", "rgba(255,255,255,0.18)", "rgba(255,255,255,0.32)", "rgba(255,255,255,0.58)", "rgba(255,255,255,0.9)"]
+      },
+      "meter-track": {
+        "role": "neutral",
+        "displayName": "Meter Track",
+        "canonical": "#353b43",
+        "tonalRamp": ["#0d0f12", "#1b1f24", "#292e35", "#353b43", "#56606c", "#818b96", "#bdc3ca", "#f2f4f6"]
+      },
+      "completion-muted": {
+        "role": "tertiary",
+        "displayName": "Muted Coral Copy",
+        "canonical": "#d8aaa4",
+        "tonalRamp": ["#281514", "#482825", "#6c403b", "#925d56", "#b67e76", "#d8aaa4", "#ead0cc", "#fbf1ef"]
+      },
+      "completion-ink": {
+        "role": "neutral",
+        "displayName": "Completion Ink",
+        "canonical": "#2a0e0a",
+        "tonalRamp": ["#140604", "#2a0e0a", "#4d1d17", "#74352c", "#9c5549", "#c58076", "#e5bab4", "#faeeec"]
+      },
+      "switch-track": {
+        "role": "neutral",
+        "displayName": "Switch Track",
+        "canonical": "#353b44",
+        "tonalRamp": ["#0d0f12", "#1b1f24", "#292e35", "#353b44", "#56606d", "#818b97", "#bdc3ca", "#f2f4f6"]
+      },
+      "switch-thumb": {
+        "role": "neutral",
+        "displayName": "Switch Thumb",
+        "canonical": "#d8dde4",
+        "tonalRamp": ["#181b1f", "#333840", "#565e68", "#7f8995", "#a9b2bd", "#d8dde4", "#ebedf1", "#f8f9fa"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Timer Display",
+        "purpose": "Expanded countdown values with tabular numerals."
+      },
+      "title": {
+        "displayName": "Panel Title",
+        "purpose": "Product, settings, and state headings."
+      },
+      "body": {
+        "displayName": "Status Body",
+        "purpose": "Compact primary copy, media titles, and controls."
+      },
+      "label": {
+        "displayName": "Quiet Label",
+        "purpose": "Metadata, sources, status descriptions, and hints."
+      },
+      "timer-compact": {
+        "displayName": "Compact Timer",
+        "purpose": "Tabular countdown values in Compact."
+      },
+      "completion": {
+        "displayName": "Completion Headline",
+        "purpose": "The sticky Time’s up acknowledgement state."
+      },
+      "control": {
+        "displayName": "Control Label",
+        "purpose": "Section labels and compact control copy."
+      },
+      "value": {
+        "displayName": "Small Value",
+        "purpose": "Percentages and secondary changing values."
+      },
+      "tiny": {
+        "displayName": "Microcopy",
+        "purpose": "Settings explanations in the fixed-height panel."
+      }
+    },
+    "shadows": [
+      {
+        "name": "ambient-shell",
+        "value": "0 12px 34px rgba(0, 0, 0, 0.42)",
+        "purpose": "Quiet separation between Atoll and the application below."
+      },
+      {
+        "name": "top-catchlight",
+        "value": "inset 0 1px rgba(255, 255, 255, 0.08)",
+        "purpose": "A restrained material edge on the outer shell."
+      }
+    ],
+    "motion": [
+      {
+        "name": "shell-grow",
+        "value": "192ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Native shell resizing over twelve 16ms frames."
+      },
+      {
+        "name": "control-hover",
+        "value": "120ms ease-out",
+        "purpose": "Color and tonal response on interactive controls."
+      },
+      {
+        "name": "tide-hover",
+        "value": "160ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "The Reef tide line widens without expanding the shell."
+      },
+      {
+        "name": "meter-update",
+        "value": "80ms linear",
+        "purpose": "Coalesced volume changes inside one Compact state."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Reef",
+      "kind": "custom",
+      "description": "Atoll's dormant, top-attached discoverable state.",
+      "html": "<button class=\"ds-reef\" aria-label=\"Open Atoll\"><span></span></button>",
+      "css": ".ds-reef{position:relative;width:80px;height:12px;padding:0;border:0;border-radius:0 0 12px 12px;background:#101318;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);cursor:pointer}.ds-reef span{position:absolute;left:50%;bottom:2px;width:28px;height:2px;border-radius:2px;background:#65d6c5;opacity:.72;transform:translateX(-50%);transition:width 160ms cubic-bezier(.16,1,.3,1),opacity 160ms ease-out}.ds-reef:hover span{width:36px;opacity:1}.ds-reef:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+    },
+    {
+      "name": "Compact Media",
+      "kind": "card",
+      "refersTo": "shell-compact",
+      "description": "A single current media status with one trailing action.",
+      "html": "<button class=\"ds-compact\"><span class=\"ds-cover\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><ellipse cx=\"12\" cy=\"12\" rx=\"7\" ry=\"4.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.3\"/></svg></span><span class=\"ds-copy\"><strong>Blue Hour</strong><small>Maya Chen</small></span><span class=\"ds-play\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8 6.5 18 12 8 17.5Z\" fill=\"currentColor\"/></svg></span></button>",
+      "css": ".ds-compact{position:relative;width:188px;height:44px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:5px 9px 5px 7px;border:0;border-radius:0 0 22px 22px;color:#f5f7fa;background:#0b0d10;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;text-align:left}.ds-compact:before{content:\"\";position:absolute;top:0;left:50%;width:36px;height:1px;background:#65d6c5;opacity:.68;transform:translateX(-50%)}.ds-cover{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;color:#65d6c5;background:#17211f}.ds-cover svg{width:22px}.ds-copy{min-width:0;display:grid}.ds-copy strong,.ds-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-copy strong{font-size:12px;line-height:16px}.ds-copy small{color:#abb4c0;font-size:9.5px;line-height:13px}.ds-play{color:#65d6c5}.ds-play svg{width:15px;height:15px}.ds-compact:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+    },
+    {
+      "name": "Expanded Shell",
+      "kind": "card",
+      "refersTo": "shell-expanded",
+      "description": "The three-row quick-action surface used for media, timer, home, and settings.",
+      "html": "<section class=\"ds-expanded\"><header><strong>Atoll</strong><small>Your status, surfaced.</small></header><div class=\"ds-basin\">One current task</div><footer>Ctrl + Shift + Space</footer></section>",
+      "css": ".ds-expanded{position:relative;width:408px;height:160px;display:grid;grid-template-rows:auto 1fr auto;padding:12px 14px 10px;border-radius:0 0 24px 24px;color:#f5f7fa;background:#0b0d10;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif}.ds-expanded:before{content:\"\";position:absolute;top:0;left:50%;width:44px;height:2px;border-radius:0 0 3px 3px;background:#65d6c5;opacity:.78;transform:translateX(-50%)}.ds-expanded header{display:grid}.ds-expanded strong{font-size:13px}.ds-expanded small,.ds-expanded footer{color:#abb4c0;font-size:9.5px}.ds-basin{align-self:center;padding:12px;border-radius:14px;color:#abb4c0;background:#15181d;font-size:12px}"
+    },
+    {
+      "name": "Primary Control",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single highest-confidence action in an Expanded panel.",
+      "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8 6.5 18 12 8 17.5Z\" fill=\"currentColor\"/></svg>Continue</button>",
+      "css": ".ds-btn-primary{min-width:82px;height:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border:0;border-radius:11px;color:#071511;background:#65d6c5;font:620 10px \"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;cursor:pointer;transition:background-color 120ms ease-out}.ds-btn-primary svg{width:14px;height:14px}.ds-btn-primary:hover{background:#81e3d4}.ds-btn-primary:focus-visible{outline:2px solid #65d6c5;outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Media Transport",
+      "kind": "button",
+      "description": "A circular secondary media command with an authored outline icon.",
+      "html": "<button class=\"ds-media-button\" aria-label=\"Next\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m7 6 8 6-8 6Z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"M17 6v12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"/></svg></button>",
+      "css": ".ds-media-button{width:34px;height:34px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;color:#abb4c0;background:#15181d;cursor:pointer;transition:color 120ms ease-out,background-color 120ms ease-out}.ds-media-button svg{width:18px;height:18px}.ds-media-button:hover{color:#f5f7fa;background:#242a31}.ds-media-button:focus-visible{outline:2px solid #65d6c5;outline-offset:2px}.ds-media-button:disabled{opacity:.3;cursor:default}"
+    },
+    {
+      "name": "Settings Toggle",
+      "kind": "custom",
+      "refersTo": "toggle-on",
+      "description": "A compact behavior switch that keeps accent color subordinate to the label.",
+      "html": "<button class=\"ds-setting\" role=\"switch\" aria-checked=\"true\"><span><strong>Motion</strong><small>Smooth state changes</small></span><i><b></b></i></button>",
+      "css": ".ds-setting{width:310px;min-height:33px;display:flex;align-items:center;justify-content:space-between;padding:3px 5px;border:0;border-radius:10px;color:#f5f7fa;background:transparent;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;text-align:left;cursor:pointer}.ds-setting:hover{background:#15181d}.ds-setting>span{display:grid}.ds-setting strong{font-size:10.5px}.ds-setting small{color:#abb4c0;font-size:8.5px}.ds-setting i{width:30px;height:17px;display:flex;align-items:center;padding:2px;border-radius:10px;background:rgba(101,214,197,.44)}.ds-setting b{width:13px;height:13px;border-radius:50%;background:#65d6c5;transform:translateX(13px)}.ds-setting:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Tide Line",
+    "overview": "Atoll is a dark, edge-attached instrument that feels grown from the top of the display rather than placed on it. Its material is dense and calm: near-black basins, one thin mint tide line, and content that appears only when it earns the space. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.\n\nThe shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life; sand marks elapsed time; coral is reserved for a completed timer that requires acknowledgement.",
+    "keyCharacteristics": [
+      "Edge-attached silhouettes with open top edges and rounded lower corners.",
+      "Dense information hierarchy sized for a glance, not a dashboard.",
+      "A single tide-line signature shared across every shell state.",
+      "Tonal layering and ambient depth instead of bright borders.",
+      "Authored outline icons and tabular numerals for changing values."
+    ],
+    "rules": [
+      {
+        "name": "The One Tide Rule",
+        "body": "Mint should remain a minority of the visible surface; use it to explain state, not to decorate empty space.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Shore Rule",
+        "body": "Sand means time in progress and coral means completion. Do not reuse either as a general-purpose accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The One-Glance Rule",
+        "body": "Compact text is always single-line and ellipsized; Atoll never uses a permanent marquee.",
+        "section": "typography"
+      },
+      {
+        "name": "The Basin Rule",
+        "body": "Add depth by changing surface tone before adding another shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do let the tide line and shell transformation carry the brand.",
+      "Do keep the most important value readable in a peripheral glance.",
+      "Do use tabular numerals for time and percentage changes.",
+      "Do update content in-place when the shell size does not change.",
+      "Do preserve a clear icon, label, or shape cue in addition to semantic color."
+    ],
+    "donts": [
+      "Don't turn Expanded into a dashboard or add a fourth content row.",
+      "Don't use permanent scrolling text, pulsing glows, or decorative idle animation.",
+      "Don't round the top corners into a detached Apple-style pill.",
+      "Don't mix icon families or substitute text glyphs for product icons.",
+      "Don't add borders and shadows to every nested surface."
+    ]
+  }
+}
