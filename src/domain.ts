@@ -120,7 +120,7 @@ export function normalizeMedia(payload: NativeMediaPayload): MediaStatus | null 
     source: source || "Windows media",
     playing: Boolean(payload.playing),
     canPrevious: Boolean(payload.can_previous),
-    canPlayPause: payload.can_play_pause !== false,
+    canPlayPause: Boolean(payload.can_play_pause),
     canNext: Boolean(payload.can_next),
     canSeek: Boolean(payload.can_seek),
     positionMs,

@@ -552,6 +552,9 @@ fn snapshot_from_session(
     let controls = playback.Controls()?;
     let playing = playback.PlaybackStatus()?
         == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+    let toggle_enabled = controls.IsPlayPauseToggleEnabled().unwrap_or(false);
+    let play_enabled = controls.IsPlayEnabled().unwrap_or(false);
+    let pause_enabled = controls.IsPauseEnabled().unwrap_or(false);
     let (position_ms, duration_ms, position_updated_at_ms) = read_timeline(session);
 
     Ok(Some(MediaSnapshot {
@@ -560,9 +563,7 @@ fn snapshot_from_session(
         source,
         playing,
         can_previous: controls.IsPreviousEnabled().unwrap_or(false),
-        can_play_pause: controls.IsPlayPauseToggleEnabled().unwrap_or(false)
-            || controls.IsPlayEnabled().unwrap_or(false)
-            || controls.IsPauseEnabled().unwrap_or(false),
+        can_play_pause: can_control_playback(playing, toggle_enabled, play_enabled, pause_enabled),
         can_next: controls.IsNextEnabled().unwrap_or(false),
         can_seek: controls.IsPlaybackPositionEnabled().unwrap_or(false),
         position_ms,
@@ -610,6 +611,15 @@ fn normalize_timeline(start: i64, end: i64, position: i64) -> Option<(u64, u64)>
         (position_ticks / TICKS_PER_MILLISECOND) as u64,
         (duration_ticks / TICKS_PER_MILLISECOND) as u64,
     ))
+}
+
+fn can_control_playback(
+    playing: bool,
+    toggle_enabled: bool,
+    play_enabled: bool,
+    pause_enabled: bool,
+) -> bool {
+    toggle_enabled || if playing { pause_enabled } else { play_enabled }
 }
 
 fn windows_datetime_to_unix_ms(value: i64) -> Option<i64> {
@@ -864,5 +874,15 @@ mod tests {
             "NetEase Cloud Music"
         );
         assert_eq!(friendly_source("SpotifyAB.SpotifyMusic!App"), "Spotify");
+    }
+
+    #[test]
+    fn playback_capability_matches_the_action_shown() {
+        assert!(can_control_playback(true, false, false, true));
+        assert!(!can_control_playback(true, false, true, false));
+        assert!(can_control_playback(false, false, true, false));
+        assert!(!can_control_playback(false, false, false, true));
+        assert!(can_control_playback(true, true, false, false));
+        assert!(can_control_playback(false, true, false, false));
     }
 }

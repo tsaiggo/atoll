@@ -35,6 +35,12 @@ declare global {
 
 type ExpandedPanel = "home" | "media" | "timer" | "settings" | "timer-finished";
 type PreviewMode = "reef" | "compact-media" | "expanded-media" | "timer-finished";
+type MediaCommand = "previous" | "toggle" | "next";
+
+interface MediaCommandFeedback {
+  message: string;
+  failed: boolean;
+}
 
 interface WindowDimensions {
   width: number;
@@ -75,7 +81,10 @@ let timerTickId: number | null = null;
 let mediaProgressTickId: number | null = null;
 let volumeVisibleUntil = 0;
 let mediaFlashUntil = 0;
-let lastMediaTitle = "";
+let lastMediaIdentity = "";
+let pendingMediaCommand: MediaCommand | null = null;
+let mediaCommandFeedback: MediaCommandFeedback | null = null;
+let mediaCommandFeedbackId: number | null = null;
 let isPointerInside = false;
 let firstRun = previewMode ? false : consumeFirstRun();
 let animateNextShellContent = false;
@@ -291,7 +300,7 @@ async function runAction(action: string, value?: string): Promise<void> {
     case "media-previous":
     case "media-toggle":
     case "media-next":
-      await sendMediaCommand(action.replace("media-", ""));
+      await sendMediaCommand(action.replace("media-", "") as MediaCommand);
       break;
     case "toggle-setting":
       toggleSetting(value);
@@ -431,12 +440,10 @@ function updateMedia(payload: NativeMediaPayload | null, fromDemo = false): void
   ) {
     next.artworkDataUrl = media.artworkDataUrl;
   }
-  const mediaIdentity = next
-    ? `${next.sessionRevision}\u001f${next.source}\u001f${next.title}\u001f${next.artist}`
-    : "";
-  const trackChanged = Boolean(next && mediaIdentity !== lastMediaTitle);
+  const mediaIdentity = next ? mediaIdentityFor(next) : "";
+  const trackChanged = Boolean(next && mediaIdentity !== lastMediaIdentity);
   media = next;
-  lastMediaTitle = mediaIdentity;
+  lastMediaIdentity = mediaIdentity;
   if (fromDemo) mediaConnection = { status: "ready", sessionCount: 1 };
   scheduleMediaProgressTick();
   if (next && trackChanged) {
@@ -674,17 +681,93 @@ function clearExpandedExpiry(): void {
   expandedExpiryId = null;
 }
 
-async function sendMediaCommand(command: string): Promise<void> {
+async function sendMediaCommand(command: MediaCommand): Promise<void> {
+  const current = media;
+  if (!current || !mediaCommandEnabled(command, current) || pendingMediaCommand !== null) return;
+
   if (!nativeRuntime || demoOverride === "media") {
-    if (command === "toggle" && media) media = { ...media, playing: !media.playing };
+    if (command === "toggle") media = optimisticPlaybackToggle(current);
     render();
     return;
   }
-  const sessionRevision = media?.sessionRevision;
-  if (sessionRevision === undefined) return;
-  await invoke<boolean>("media_command", { command, sessionRevision }).catch((error: unknown) =>
-    console.warn(`Media command '${command}' failed`, error),
-  );
+
+  const sessionRevision = current.sessionRevision;
+  const identity = mediaIdentityFor(current);
+  const previousPlaying = current.playing;
+  pendingMediaCommand = command;
+  setMediaCommandFeedback(commandPendingMessage(command, current), false);
+  if (command === "toggle") media = optimisticPlaybackToggle(current);
+  render();
+
+  let accepted = false;
+  try {
+    accepted = await invoke<boolean>("media_command", { command, sessionRevision });
+  } catch (error: unknown) {
+    console.warn(`Media command '${command}' failed`, error);
+  }
+
+  const sameTarget =
+    media?.sessionRevision === sessionRevision && mediaIdentityFor(media) === identity;
+  if (!accepted && command === "toggle" && sameTarget && media) {
+    media = {
+      ...media,
+      playing: previousPlaying,
+      positionUpdatedAtMs: Date.now(),
+    };
+  }
+
+  pendingMediaCommand = null;
+  if (!accepted && sameTarget) {
+    setMediaCommandFeedback("Control unavailable", true, 1600);
+  } else {
+    setMediaCommandFeedback(null);
+  }
+  render();
+}
+
+function mediaCommandEnabled(command: MediaCommand, current: MediaStatus): boolean {
+  if (command === "previous") return current.canPrevious;
+  if (command === "next") return current.canNext;
+  return current.canPlayPause;
+}
+
+function optimisticPlaybackToggle(current: MediaStatus): MediaStatus {
+  const now = Date.now();
+  return {
+    ...current,
+    playing: !current.playing,
+    positionMs: current.playing ? mediaPositionMs(current, now) : current.positionMs,
+    positionUpdatedAtMs: now,
+  };
+}
+
+function commandPendingMessage(command: MediaCommand, current: MediaStatus): string {
+  if (command === "previous") return "Going to previous track…";
+  if (command === "next") return "Going to next track…";
+  return current.playing ? "Pausing…" : "Playing…";
+}
+
+function setMediaCommandFeedback(
+  feedback: string | null,
+  failed = false,
+  clearAfterMs?: number,
+): void {
+  if (mediaCommandFeedbackId !== null) {
+    window.clearTimeout(mediaCommandFeedbackId);
+    mediaCommandFeedbackId = null;
+  }
+  mediaCommandFeedback = feedback ? { message: feedback, failed } : null;
+  if (feedback && clearAfterMs !== undefined) {
+    mediaCommandFeedbackId = window.setTimeout(() => {
+      mediaCommandFeedbackId = null;
+      mediaCommandFeedback = null;
+      if (shell === "expanded" && expandedPanel === "media") render();
+    }, clearAfterMs);
+  }
+}
+
+function mediaIdentityFor(current: MediaStatus): string {
+  return `${current.sessionRevision}\u001f${current.source}\u001f${current.title}\u001f${current.artist}`;
 }
 
 function toggleSetting(settingName?: string): void {
@@ -710,6 +793,9 @@ function panelForContent(kind: ContentKind): ExpandedPanel {
 }
 
 function render(): void {
+  const focusedAction = app
+    .querySelector<HTMLElement>("[data-action]:focus")
+    ?.dataset.action;
   app.dataset.shell = shell;
   app.dataset.content = content;
   app.classList.toggle("motion-disabled", !settings.animationsEnabled || reducedMotion.matches);
@@ -730,10 +816,14 @@ function render(): void {
     return;
   }
   if (shell === "compact") {
-    app.innerHTML = `
-      <button class="atoll-shell compact compact--${content}${motionClass}" type="button" aria-label="${escapeHtml(compactAccessibleLabel())}">
-        ${renderCompact()}
-      </button>`;
+    app.innerHTML =
+      content === "media" && media
+        ? renderCompactMedia(motionClass)
+        : `
+          <button class="atoll-shell compact compact--${content}${motionClass}" type="button" aria-label="${escapeHtml(compactAccessibleLabel())}">
+            ${renderCompact()}
+          </button>`;
+    restoreFocusedAction(focusedAction);
     scheduleMediaProgressTick();
     return;
   }
@@ -741,7 +831,37 @@ function render(): void {
     <section class="atoll-shell expanded expanded--${expandedPanel}${motionClass}" aria-label="Atoll quick controls">
       ${renderExpanded()}
     </section>`;
+  restoreFocusedAction(focusedAction);
   scheduleMediaProgressTick();
+}
+
+function restoreFocusedAction(action?: string): void {
+  if (!action) return;
+  const target = Array.from(app.querySelectorAll<HTMLElement>("[data-action]")).find(
+    (element) => element.dataset.action === action && !element.hasAttribute("disabled"),
+  );
+  target?.focus({ preventScroll: true });
+}
+
+function renderCompactMedia(motionClass: string): string {
+  if (!media) return "";
+  const current = media;
+  const commandPending = pendingMediaCommand !== null;
+  const toggleLabel = current.playing ? "Pause" : "Play";
+  return `
+    <div class="atoll-shell compact compact--media${motionClass}" role="group" aria-label="Current media controls">
+      <button class="compact-media__open" type="button" data-action="open-media" aria-label="Open media controls for ${escapeHtml(current.title)}">
+        ${renderCover(current, "cover cover--compact")}
+        <span class="compact__copy">
+          <strong>${escapeHtml(current.title)}</strong>
+          <small>${escapeHtml(current.artist)}</small>
+        </span>
+      </button>
+      <button class="compact-media__toggle ${pendingMediaCommand === "toggle" ? "is-pending" : ""}" type="button" data-action="media-toggle" aria-label="${toggleLabel}" aria-busy="${pendingMediaCommand === "toggle"}" ${!current.canPlayPause ? "disabled" : ""} ${commandPending ? 'aria-disabled="true"' : ""}>
+        ${icon(current.playing ? "pause" : "play")}
+      </button>
+      <span class="sr-only" role="status" aria-live="polite">${escapeHtml(mediaCommandFeedback?.message ?? "")}</span>
+    </div>`;
 }
 
 function renderCompact(): string {
@@ -827,7 +947,7 @@ function renderHomePanel(): string {
       </button>
       ${
         media
-          ? `<button class="icon-button icon-button--accent" type="button" data-action="media-toggle" aria-label="${media.playing ? "Pause" : "Play"}">${icon(media.playing ? "pause" : "play")}</button>`
+          ? `<button class="icon-button icon-button--accent" type="button" data-action="media-toggle" aria-label="${media.playing ? "Pause" : "Play"}" ${media.canPlayPause ? "" : "disabled"} ${pendingMediaCommand !== null ? 'aria-disabled="true"' : ""}>${icon(media.playing ? "pause" : "play")}</button>`
           : ""
       }
     </div>
@@ -856,6 +976,8 @@ function renderMediaPanel(): string {
     current.positionMs !== undefined &&
     current.durationMs !== undefined &&
     current.durationMs > 0;
+  const commandPending = pendingMediaCommand !== null;
+  const sourceCopy = mediaCommandFeedback?.message ?? sourceDetail;
   return `
     <header class="expanded__header expanded__header--media">
       ${renderCover(current, "cover cover--expanded")}
@@ -867,14 +989,14 @@ function renderMediaPanel(): string {
     </header>
     <div class="media-playback ${hasProgress ? "" : "media-playback--without-progress"}">
       ${renderMediaProgress(current)}
-      <div class="media-controls" role="group" aria-label="Media controls">
-        ${mediaButton("media-previous", "previous", "Previous", current.canPrevious)}
-        ${mediaButton("media-toggle", current.playing ? "pause" : "play", current.playing ? "Pause" : "Play", current.canPlayPause, true)}
-        ${mediaButton("media-next", "next", "Next", current.canNext)}
+      <div class="media-controls" role="group" aria-label="Media controls" aria-busy="${commandPending}">
+        ${mediaButton("media-previous", "previous", "Previous", current.canPrevious, false, commandPending)}
+        ${mediaButton("media-toggle", current.playing ? "pause" : "play", current.playing ? "Pause" : "Play", current.canPlayPause, true, commandPending, pendingMediaCommand === "toggle")}
+        ${mediaButton("media-next", "next", "Next", current.canNext, false, commandPending)}
       </div>
     </div>
     <footer class="expanded__footer">
-      <span class="source-label">${icon("media")}<span>${escapeHtml(sourceDetail)}</span></span>
+      <span class="source-label ${mediaCommandFeedback?.failed ? "source-label--feedback" : ""}" aria-live="${mediaCommandFeedback ? "polite" : "off"}">${icon("media")}<span>${escapeHtml(sourceCopy)}</span></span>
       ${renderInlineVolume()}
       <button class="text-button" type="button" data-action="open-home">${icon("back")}Home</button>
     </footer>`;
@@ -975,9 +1097,11 @@ function mediaButton(
   label: string,
   enabled: boolean,
   primary = false,
+  commandPending = false,
+  isPending = false,
 ): string {
   return `
-    <button class="media-button ${primary ? "media-button--primary" : ""}" type="button" data-action="${action}" aria-label="${label}" ${enabled ? "" : "disabled"}>
+    <button class="media-button ${primary ? "media-button--primary" : ""} ${isPending ? "is-pending" : ""}" type="button" data-action="${action}" aria-label="${isPending ? `${label}, working` : label}" aria-busy="${isPending}" ${enabled ? "" : "disabled"} ${commandPending ? 'aria-disabled="true"' : ""}>
       ${icon(iconName)}
     </button>`;
 }

@@ -4,7 +4,7 @@
 
 ## Platform
 
-Windows desktop
+web
 
 ## Users
 
