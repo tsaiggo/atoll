@@ -47,6 +47,11 @@ interface WindowDimensions {
   height: number;
 }
 
+interface NativeAcceptedShell {
+  shell: ShellState;
+  signature: string;
+}
+
 const appElement = document.querySelector<HTMLElement>("#app");
 if (!appElement) throw new Error("Atoll root element was not found.");
 const app: HTMLElement = appElement;
@@ -89,6 +94,9 @@ let isPointerInside = false;
 let firstRun = previewMode ? false : consumeFirstRun();
 let animateNextShellContent = false;
 let manuallyHidden = false;
+let shellRevision = 0;
+let nativeAcceptedShell: NativeAcceptedShell | null = null;
+let nativeShellQueue: Promise<void> = Promise.resolve();
 
 function isPreviewMode(value: string | null): value is PreviewMode {
   return (
@@ -170,19 +178,20 @@ async function startApplication(): Promise<void> {
 function configurePreview(mode: PreviewMode): void {
   media = { ...DEMO_MEDIA };
   mediaConnection = { status: "ready", sessionCount: 1 };
+  let previewShell: ShellState;
   switch (mode) {
     case "reef":
       content = "idle";
-      shell = "reef";
+      previewShell = "reef";
       break;
     case "compact-media":
       content = "media";
-      shell = "compact";
+      previewShell = "compact";
       break;
     case "expanded-media":
       content = "media";
       expandedPanel = "media";
-      shell = "expanded";
+      previewShell = "expanded";
       break;
     case "timer-finished":
       timer = {
@@ -193,10 +202,10 @@ function configurePreview(mode: PreviewMode): void {
       };
       content = "timer-finished";
       expandedPanel = "timer-finished";
-      shell = "expanded";
+      previewShell = "expanded";
       break;
   }
-  void setShell(shell, false, true);
+  void setShell(previewShell, false, true);
   scheduleMediaProgressTick();
 }
 
@@ -563,7 +572,10 @@ function refreshMediaProgress(): void {
   if (elapsed) elapsed.textContent = formatPlaybackTime(position);
 }
 
-function reconcilePresentation(animate = true): void {
+function reconcilePresentation(
+  animate = settings.animationsEnabled && !reducedMotion.matches,
+  preserveExpanded = true,
+): void {
   timer = reconcileTimer(timer);
   if (manuallyHidden) {
     void setShell("hidden", animate);
@@ -571,7 +583,7 @@ function reconcilePresentation(animate = true): void {
   }
   if (timer.phase === "finished") {
     content = "timer-finished";
-    if (shell !== "expanded") void setShell("compact", animate);
+    if (!preserveExpanded || shell !== "expanded") void setShell("compact", animate);
     else render();
     return;
   }
@@ -598,7 +610,7 @@ function reconcilePresentation(animate = true): void {
     content = "idle";
   }
 
-  if (shell === "expanded") {
+  if (preserveExpanded && shell === "expanded") {
     render();
   } else if (content === "idle") {
     void setShell(settings.idleMode === "hidden" ? "hidden" : "reef", animate);
@@ -615,8 +627,7 @@ function shouldHideForFullscreen(): boolean {
 function collapse(): void {
   clearExpandedExpiry();
   if (content === "settings") content = "idle";
-  shell = "compact";
-  reconcilePresentation();
+  reconcilePresentation(settings.animationsEnabled && !reducedMotion.matches, false);
 }
 
 async function setShell(
@@ -625,26 +636,69 @@ async function setShell(
   forceNative = false,
 ): Promise<void> {
   const previous = shell;
+  const enteredExpanded = previous !== "expanded" && next === "expanded";
+  if (next !== "expanded") clearExpandedExpiry();
+  if (next !== "compact") clearCompactExpiry();
+  if (previous !== next || forceNative) shellRevision += 1;
+  const revision = shellRevision;
   animateNextShellContent = animated && previous !== next;
   shell = next;
   if (next !== "hidden") lastVisibleShell = next;
   render();
   if (!nativeRuntime) return;
-  if (!forceNative && previous === next) {
-    if (next === "expanded" && !isPointerInside) setExpandedExpiry();
-    return;
-  }
 
   const size = next === "hidden" ? dimensions[lastVisibleShell] : dimensions[next];
-  await invoke("set_window_shell", {
-    shell: next,
-    width: size.width,
-    height: size.height,
-    animated,
-    topMargin: settings.topMargin,
-  }).catch((error: unknown) => console.warn("Unable to update the Atoll shell", error));
+  const signature = `${next}:${size.width}x${size.height}:${settings.topMargin}`;
+  let accepted = false;
+  const syncNativeShell = async (): Promise<void> => {
+    if (revision !== shellRevision) return;
+    if (!forceNative && nativeAcceptedShell?.signature === signature) {
+      accepted = true;
+      return;
+    }
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await invoke("set_window_shell", {
+          shell: next,
+          width: size.width,
+          height: size.height,
+          animated: attempt === 0 ? animated : false,
+          topMargin: settings.topMargin,
+        });
+        nativeAcceptedShell = { shell: next, signature };
+        if (revision === shellRevision) {
+          accepted = true;
+        }
+        return;
+      } catch (error: unknown) {
+        lastError = error;
+        if (revision !== shellRevision) return;
+      }
+    }
 
-  if (next === "expanded" && !isPointerInside) setExpandedExpiry();
+    console.warn("Unable to update the Atoll shell after retrying", lastError);
+    const fallback = nativeAcceptedShell?.shell ?? "hidden";
+    if (fallback !== shell) {
+      void setShell(fallback, false);
+    }
+  };
+  const operation = nativeShellQueue.then(syncNativeShell, syncNativeShell);
+  nativeShellQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  await operation;
+
+  if (
+    accepted &&
+    revision === shellRevision &&
+    shell === "expanded" &&
+    (enteredExpanded || forceNative) &&
+    !isPointerInside
+  ) {
+    setExpandedExpiry();
+  }
 }
 
 function setCompactExpiry(milliseconds: number): void {
@@ -665,9 +719,10 @@ function clearCompactExpiry(): void {
 
 function setExpandedExpiry(): void {
   clearExpandedExpiry();
+  const revision = shellRevision;
   expandedExpiryId = window.setTimeout(() => {
     expandedExpiryId = null;
-    if (!isPointerInside && shell === "expanded") collapse();
+    if (revision === shellRevision && !isPointerInside && shell === "expanded") collapse();
   }, settings.expandedTimeoutMs);
 }
 

@@ -1,9 +1,10 @@
 use std::{thread, time::Duration};
 
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, State, WebviewWindow};
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewWindow};
 
 use crate::{
-    is_current_transition, next_transition_epoch, set_top_margin, top_margin, RuntimeState,
+    is_current_transition, lock_window_mutation, next_transition_epoch, set_top_margin, top_margin,
+    RuntimeState,
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -70,9 +71,11 @@ pub fn start_display_watcher(app: AppHandle) {
                     });
 
                 if previous.is_some() && signature != previous {
+                    let runtime = window.state::<RuntimeState>();
+                    let _mutation = lock_window_mutation(&runtime);
                     if let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
                         let logical = size.to_logical::<f64>(scale);
-                        let margin = top_margin(&window.state::<RuntimeState>());
+                        let margin = top_margin(&runtime);
                         if let Err(error) =
                             resize_and_position(&window, logical.width, logical.height, margin)
                         {
@@ -88,44 +91,74 @@ pub fn start_display_watcher(app: AppHandle) {
 }
 
 #[tauri::command]
-pub fn set_window_shell(
+pub async fn set_window_shell(
     window: WebviewWindow,
-    state: State<'_, RuntimeState>,
     shell: String,
     width: f64,
     height: f64,
     animated: bool,
     top_margin: f64,
 ) -> Result<(), String> {
-    let epoch = next_transition_epoch(&state);
-    set_top_margin(&state, top_margin);
-    if shell == "hidden" {
-        return window.hide().map_err(|error| error.to_string());
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        accept_window_shell(window, shell, width, height, animated, top_margin)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
 
-    let current = window
-        .inner_size()
-        .map_err(|error| error.to_string())?
-        .to_logical::<f64>(window.scale_factor().map_err(|error| error.to_string())?);
-    let start_width = current.width.max(1.0);
-    let start_height = current.height.max(1.0);
+fn accept_window_shell(
+    window: WebviewWindow,
+    shell: String,
+    width: f64,
+    height: f64,
+    animated: bool,
+    top_margin: f64,
+) -> Result<(), String> {
+    let (epoch, start_width, start_height) = {
+        // Keep accepting a newer request and each native mutation mutually ordered.
+        // An older frame can finish before this block, but it can never write after it.
+        let runtime = window.state::<RuntimeState>();
+        let _mutation = lock_window_mutation(&runtime);
+        let epoch = next_transition_epoch(&runtime);
+        set_top_margin(&runtime, top_margin);
+        if shell == "hidden" {
+            window.hide().map_err(|error| error.to_string())?;
+            return Ok(());
+        }
+
+        let current = window
+            .inner_size()
+            .map_err(|error| error.to_string())?
+            .to_logical::<f64>(window.scale_factor().map_err(|error| error.to_string())?);
+        (epoch, current.width.max(1.0), current.height.max(1.0))
+    };
     let steps = if animated { 12 } else { 1 };
     let cloned_window = window.clone();
 
     thread::spawn(move || {
         for step in 1..=steps {
-            if !is_current_transition(&cloned_window.state::<RuntimeState>(), epoch) {
-                return;
-            }
             let progress = step as f64 / steps as f64;
             let eased = 1.0 - (1.0 - progress).powi(4);
             let frame_width = start_width + (width - start_width) * eased;
             let frame_height = start_height + (height - start_height) * eased;
-            if resize_and_position(&cloned_window, frame_width, frame_height, top_margin).is_err() {
-                return;
-            }
-            if step == 1 {
-                let _ = show_without_focus(&cloned_window);
+            {
+                let runtime = cloned_window.state::<RuntimeState>();
+                let _mutation = lock_window_mutation(&runtime);
+                if !is_current_transition(&runtime, epoch) {
+                    return;
+                }
+                if let Err(error) =
+                    resize_and_position(&cloned_window, frame_width, frame_height, top_margin)
+                {
+                    log::warn!("Unable to resize Atoll to the {shell} shell: {error}");
+                    return;
+                }
+                if step == 1 {
+                    if let Err(error) = show_without_focus(&cloned_window) {
+                        log::warn!("Unable to show the {shell} shell: {error}");
+                        return;
+                    }
+                }
             }
             if animated && step < steps {
                 thread::sleep(Duration::from_millis(16));
