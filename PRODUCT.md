@@ -34,7 +34,7 @@ Atoll is not a phone-style “dynamic island” replica. Its distinct mechanism 
 - Priority-driven content shared by Demo, media, timer, and volume modules.
 - Single instance; a second launch summons the existing instance.
 - Tray controls, right-click menu, global shortcut, no ordinary taskbar entry, and complete exit cleanup.
-- Windows current-media-session reading and supported transport controls.
+- Atoll Connect enumerates Windows media sessions, selects the most relevant active source, and exposes only metadata, timeline, and controls that the player publishes through GSMTC.
 - Full-screen hiding, persistent settings, elapsed-time-correct timers, and event-driven volume feedback.
 - Core behavior runs locally with no account, cloud sync, ads, telemetry, analytics, or unrelated content capture.
 - No administrator permission, process injection, broad notification scraping, or suspicious hooks.

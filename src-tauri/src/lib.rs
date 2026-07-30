@@ -7,10 +7,12 @@ mod volume;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+#[cfg(debug_assertions)]
+use tauri::menu::Submenu;
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
@@ -45,11 +47,22 @@ fn show_context_menu(
 }
 
 #[tauri::command]
-fn media_command(
+async fn media_command(
     command: String,
+    session_revision: u64,
     runtime: tauri::State<'_, media::MediaRuntime>,
 ) -> Result<bool, String> {
-    media::send_command(&runtime, &command)
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        media::send_command(&runtime, &command, session_revision)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn media_status(runtime: tauri::State<'_, media::MediaRuntime>) -> media::MediaConnectState {
+    media::current_state(&runtime)
 }
 
 #[tauri::command]
@@ -71,51 +84,71 @@ fn create_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Me
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Exit Atoll", true, None::<&str>)?;
 
-    let demo_idle = MenuItem::with_id(app, "demo:idle", "Idle", true, None::<&str>)?;
-    let demo_media =
-        MenuItem::with_id(app, "demo:media", "Media playing", true, None::<&str>)?;
-    let demo_volume = MenuItem::with_id(app, "demo:volume", "Volume", true, None::<&str>)?;
-    let demo_timer = MenuItem::with_id(
-        app,
-        "demo:timer-running",
-        "Timer running",
-        true,
-        None::<&str>,
-    )?;
-    let demo_finished = MenuItem::with_id(
-        app,
-        "demo:timer-finished",
-        "Timer finished",
-        true,
-        None::<&str>,
-    )?;
-    let demo = Submenu::with_items(
-        app,
-        "Demo",
-        true,
-        &[
-            &demo_idle,
-            &demo_media,
-            &demo_volume,
-            &demo_timer,
-            &demo_finished,
-        ],
-    )?;
-    let separator_one = PredefinedMenuItem::separator(app)?;
-    let separator_two = PredefinedMenuItem::separator(app)?;
+    #[cfg(debug_assertions)]
+    {
+        let demo_idle = MenuItem::with_id(app, "demo:idle", "Idle", true, None::<&str>)?;
+        let demo_media =
+            MenuItem::with_id(app, "demo:media", "Media playing", true, None::<&str>)?;
+        let demo_volume = MenuItem::with_id(app, "demo:volume", "Volume", true, None::<&str>)?;
+        let demo_timer = MenuItem::with_id(
+            app,
+            "demo:timer-running",
+            "Timer running",
+            true,
+            None::<&str>,
+        )?;
+        let demo_finished = MenuItem::with_id(
+            app,
+            "demo:timer-finished",
+            "Timer finished",
+            true,
+            None::<&str>,
+        )?;
+        let demo = Submenu::with_items(
+            app,
+            "Demo",
+            true,
+            &[
+                &demo_idle,
+                &demo_media,
+                &demo_volume,
+                &demo_timer,
+                &demo_finished,
+            ],
+        )?;
+        let separator_one = PredefinedMenuItem::separator(app)?;
+        let separator_two = PredefinedMenuItem::separator(app)?;
 
-    Menu::with_items(
-        app,
-        &[
-            &toggle,
-            &expand,
-            &separator_one,
-            &demo,
-            &settings,
-            &separator_two,
-            &quit,
-        ],
-    )
+        Menu::with_items(
+            app,
+            &[
+                &toggle,
+                &expand,
+                &separator_one,
+                &demo,
+                &settings,
+                &separator_two,
+                &quit,
+            ],
+        )
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let separator_one = PredefinedMenuItem::separator(app)?;
+        let separator_two = PredefinedMenuItem::separator(app)?;
+        Menu::with_items(
+            app,
+            &[
+                &toggle,
+                &expand,
+                &separator_one,
+                &settings,
+                &separator_two,
+                &quit,
+            ],
+        )
+    }
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<QuickMenu> {
@@ -205,6 +238,7 @@ pub fn run() {
             shell::set_window_shell,
             show_context_menu,
             media_command,
+            media_status,
             is_fullscreen_active,
             timer::schedule_timer
         ])
