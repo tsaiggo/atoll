@@ -48,7 +48,7 @@ Atoll is not a phone-style “dynamic island” replica. Its distinct mechanism 
 - English line: “Your status, surfaced.”
 - The brand metaphor is a small, stable atoll that carries activity and recedes to a reef.
 - Voice is concise, calm, useful, and never attention-seeking.
-- The supplied dark Windows-native direction and reef/coral identity are binding; Atoll must not look like a generic system-control collage or a direct Apple pill copy.
+- The Windows-native reef/coral identity is binding and follows the user’s Windows app theme in both light and dark modes; Atoll must not look like a generic system-control collage or a direct Apple pill copy.
 
 ## Evidence on Hand
 

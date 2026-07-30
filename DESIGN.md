@@ -19,6 +19,12 @@ colors:
   completion-ink: "#2a0e0a"
   switch-track: "#353b44"
   switch-thumb: "#d8dde4"
+  light-reef: "#f2f5f4"
+  light-raised-basin: "#ffffff"
+  light-soft-basin: "#e6ece9"
+  light-foam: "#14201d"
+  light-mist: "#4f625d"
+  light-tide: "#16786c"
 typography:
   display:
     fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
@@ -142,7 +148,7 @@ components:
 
 **Creative North Star: "The Quiet Tide Line"**
 
-Atoll is a dark, edge-attached instrument that feels grown from the top of the display rather than placed on it. Its material is dense and calm: near-black basins, one thin mint tide line, and content that appears only when it earns the space. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
+Atoll is an edge-attached instrument that feels grown from the top of the display rather than placed on it. Its material follows the Windows app theme: near-black basins in dark mode, pale sea-glass basins in light mode, one thin tide line, and content that appears only when it earns the space. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
 
 The shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life; sand marks elapsed time; coral is reserved for a completed timer that requires acknowledgement.
 
@@ -156,7 +162,7 @@ The shell is the identity. Reef, Compact, and Expanded are three expressions of 
 
 ## Colors
 
-The palette is a submerged neutral field with one cool living accent and two narrowly scoped semantic signals.
+The palette is a submerged neutral field with one cool living accent and two narrowly scoped semantic signals. Windows light/dark preference is the source of truth and changes must repaint in place without rebuilding or focusing the window. Light mode uses deeper teal, sand, and coral values so semantic controls retain contrast instead of merely inverting the dark palette.
 
 ### Primary
 
@@ -175,6 +181,7 @@ The palette is a submerged neutral field with one cool living accent and two nar
 - **Foam White:** Primary text and high-confidence values.
 - **Mist Text:** Supporting labels and metadata.
 - **Quiet Slate:** Low-priority hints and shortcut labels.
+- **Light Reef:** A pale green-gray outer shell with white raised basins, dark foam text, and an inset edge that remains legible against light desktop content.
 
 **The One Tide Rule.** Mint should remain a minority of the visible surface; use it to explain state, not to decorate empty space.
 
@@ -262,6 +269,7 @@ The switch is a short dark track with a solid circular thumb. The on state uses 
 - **Do** keep the most important value readable in a peripheral glance.
 - **Do** use tabular numerals for time and percentage changes.
 - **Do** update content in-place when the shell size does not change.
+- **Do** follow the live Windows app theme without changing window geometry, focus, or current state.
 - **Do** preserve a clear icon, label, or shape cue in addition to semantic color.
 
 ### Don't:

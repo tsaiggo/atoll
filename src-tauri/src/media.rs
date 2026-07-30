@@ -20,7 +20,7 @@ use windows::{
         GlobalSystemMediaTransportControlsSessionPlaybackStatus, MediaPropertiesChangedEventArgs,
         PlaybackInfoChangedEventArgs, SessionsChangedEventArgs,
     },
-    Storage::Streams::DataReader,
+    Storage::Streams::{DataReader, InputStreamOptions},
     Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED},
 };
 use windows_future::{AsyncOperationCompletedHandler, AsyncStatus};
@@ -31,6 +31,7 @@ const COMMAND_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const WINDOWS_TO_UNIX_EPOCH_TICKS: i64 = 116_444_736_000_000_000;
 const TICKS_PER_MILLISECOND: i64 = 10_000;
 const MAX_ARTWORK_BYTES: u64 = 1024 * 1024;
+const ARTWORK_READ_CHUNK_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Default)]
 pub struct MediaRuntime {
@@ -113,8 +114,51 @@ impl RefreshNotifier {
 
 #[derive(Default)]
 struct ArtworkCache {
+    session: Option<GlobalSystemMediaTransportControlsSession>,
     identity: String,
     data_url: Option<String>,
+    failed_attempts: u8,
+    retry_after: Option<Instant>,
+}
+
+impl ArtworkCache {
+    fn clear(&mut self) {
+        self.session = None;
+        self.identity.clear();
+        self.data_url = None;
+        self.failed_attempts = 0;
+        self.retry_after = None;
+    }
+
+    fn prepare(&mut self, session: &GlobalSystemMediaTransportControlsSession, identity: String) {
+        let session_changed = self.session.as_ref() != Some(session);
+        if session_changed || self.identity != identity {
+            self.session = Some(session.clone());
+            self.identity = identity;
+            self.data_url = None;
+            self.failed_attempts = 0;
+            self.retry_after = None;
+        }
+    }
+
+    fn should_load(&self, now: Instant) -> bool {
+        self.data_url.is_none()
+            && self
+                .retry_after
+                .is_none_or(|retry_after| now >= retry_after)
+    }
+
+    fn mark_failed(&mut self, now: Instant) {
+        let retry_delay = artwork_retry_delay(self.failed_attempts);
+        self.failed_attempts = self.failed_attempts.saturating_add(1);
+        self.retry_after = Some(now + retry_delay);
+    }
+
+    fn store(&mut self, data_url: String) {
+        self.data_url = Some(data_url);
+        self.failed_attempts = 0;
+        self.retry_after = None;
+    }
 }
 
 struct WinRtApartment(bool);
@@ -494,8 +538,7 @@ fn capture_connect_state(
         }
     }
 
-    cache.identity.clear();
-    cache.data_url = None;
+    cache.clear();
     let status = if session_count == 0 {
         MediaConnectStatus::NoSession
     } else {
@@ -541,11 +584,23 @@ fn snapshot_from_session(
         return Ok(None);
     }
     let source = friendly_source(&source_id);
-    let identity = format!("{source_id}\u{1f}{title}\u{1f}{artist}");
+    let album = properties
+        .AlbumTitle()
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    let identity = format!("{source_id}\u{1f}{title}\u{1f}{artist}\u{1f}{album}");
+    cache.prepare(session, identity);
 
-    if cache.identity != identity {
-        cache.identity = identity;
-        cache.data_url = read_artwork_data_url(&properties).ok().flatten();
+    let now = Instant::now();
+    if cache.should_load(now) {
+        match read_artwork_data_url(&properties) {
+            Ok(Some(data_url)) => cache.store(data_url),
+            Ok(None) => cache.mark_failed(now),
+            Err(error) => {
+                log::debug!("Unable to read media artwork: {error}");
+                cache.mark_failed(now);
+            }
+        }
     }
 
     let playback = session.GetPlaybackInfo()?;
@@ -711,25 +766,130 @@ fn read_artwork_data_url(
 ) -> windows::core::Result<Option<String>> {
     let thumbnail = properties.Thumbnail()?;
     let stream = thumbnail.OpenReadAsync()?.get()?;
-    let size = stream.Size()?;
-    if size == 0 || size > MAX_ARTWORK_BYTES {
+    if stream.CanRead().ok() == Some(false) {
         return Ok(None);
     }
+    let reported_size = stream.Size().ok().filter(|size| *size > 0);
+    if reported_size.is_some_and(|size| size > MAX_ARTWORK_BYTES) {
+        return Ok(None);
+    }
+    let content_type = stream
+        .ContentType()
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+
+    // GetInputStreamAt creates a fresh view at zero even when a provider reuses
+    // a stream whose cursor was left elsewhere. Seek is still attempted because
+    // some desktop media providers only reset their backing stream that way.
+    let _ = stream.Seek(0);
     let input = stream.GetInputStreamAt(0)?;
     let reader = DataReader::CreateDataReader(&input)?;
-    let loaded = reader.LoadAsync(size as u32)?.get()?;
-    if loaded == 0 {
+    let read_result = reader
+        .SetInputStreamOptions(InputStreamOptions::Partial)
+        .and_then(|_| read_artwork_bytes(&reader, reported_size));
+    let _ = reader.Close();
+    let Some(bytes) = read_result? else {
+        return Ok(None);
+    };
+    let Some(mime) = artwork_mime_type(&content_type, &bytes) else {
+        return Ok(None);
+    };
+
+    Ok(Some(format!("data:{mime};base64,{}", BASE64.encode(bytes))))
+}
+
+fn read_artwork_bytes(
+    reader: &DataReader,
+    reported_size: Option<u64>,
+) -> windows::core::Result<Option<Vec<u8>>> {
+    let expected_size = reported_size.and_then(|size| usize::try_from(size).ok());
+    let max_size = MAX_ARTWORK_BYTES as usize;
+    let mut bytes = Vec::with_capacity(expected_size.unwrap_or(ARTWORK_READ_CHUNK_BYTES));
+
+    loop {
+        let remaining = match expected_size {
+            Some(expected) => expected.saturating_sub(bytes.len()),
+            None => max_size.saturating_add(1).saturating_sub(bytes.len()),
+        };
+        if remaining == 0 {
+            break;
+        }
+        let requested = remaining.min(ARTWORK_READ_CHUNK_BYTES);
+        let loaded = reader.LoadAsync(requested as u32)?.get()? as usize;
+        if loaded == 0 {
+            break;
+        }
+        let next_length = match bytes.len().checked_add(loaded) {
+            Some(length) if length <= max_size => length,
+            _ => return Ok(None),
+        };
+        let previous_length = bytes.len();
+        bytes.resize(next_length, 0);
+        reader.ReadBytes(&mut bytes[previous_length..next_length])?;
+    }
+
+    if bytes.is_empty() || expected_size.is_some_and(|expected| bytes.len() != expected) {
         return Ok(None);
     }
-    let mut bytes = vec![0_u8; loaded as usize];
-    reader.ReadBytes(&mut bytes)?;
-    let content_type = stream.ContentType()?.to_string();
-    let mime = if content_type.starts_with("image/") {
-        content_type
+    Ok(Some(bytes))
+}
+
+fn artwork_mime_type(content_type: &str, bytes: &[u8]) -> Option<&'static str> {
+    sniff_artwork_mime_type(bytes).or_else(|| normalize_artwork_mime_type(content_type))
+}
+
+fn normalize_artwork_mime_type(content_type: &str) -> Option<&'static str> {
+    content_type.split(',').find_map(|part| {
+        let mime = part
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
+        match mime.as_str() {
+            "image/jpeg" | "image/jpg" | "image/jpe" | "image/pjpeg" => Some("image/jpeg"),
+            "image/png" | "image/x-png" => Some("image/png"),
+            "image/gif" => Some("image/gif"),
+            "image/webp" => Some("image/webp"),
+            "image/bmp" | "image/x-ms-bmp" => Some("image/bmp"),
+            "image/x-icon" | "image/vnd.microsoft.icon" => Some("image/x-icon"),
+            "image/avif" => Some("image/avif"),
+            _ => None,
+        }
+    })
+}
+
+fn sniff_artwork_mime_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(b"BM") {
+        Some("image/bmp")
+    } else if bytes.starts_with(&[0, 0, 1, 0]) {
+        Some("image/x-icon")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
+    {
+        Some("image/avif")
     } else {
-        "image/jpeg".to_string()
-    };
-    Ok(Some(format!("data:{mime};base64,{}", BASE64.encode(bytes))))
+        None
+    }
+}
+
+fn artwork_retry_delay(failed_attempts: u8) -> Duration {
+    match failed_attempts {
+        0 => Duration::from_secs(1),
+        1 => Duration::from_secs(2),
+        2 => Duration::from_secs(5),
+        3 => Duration::from_secs(15),
+        _ => Duration::from_secs(30),
+    }
 }
 
 fn friendly_source(source_id: &str) -> String {
@@ -765,8 +925,17 @@ fn publish_state(app: &AppHandle, state: MediaConnectState) {
                 || latest.session_count != state.session_count
                 || previous_source != next_source;
             let preserve_artwork = same_media_identity(latest.media.as_ref(), state.media.as_ref());
+            let artwork_unchanged = preserve_artwork
+                && latest
+                    .media
+                    .as_ref()
+                    .and_then(|media| media.artwork_data_url.as_deref())
+                    == state
+                        .media
+                        .as_ref()
+                        .and_then(|media| media.artwork_data_url.as_deref());
             *latest = state;
-            let cached_artwork = if preserve_artwork {
+            let cached_artwork = if artwork_unchanged {
                 latest
                     .media
                     .as_mut()
@@ -884,5 +1053,37 @@ mod tests {
         assert!(!can_control_playback(false, false, false, true));
         assert!(can_control_playback(true, true, false, false));
         assert!(can_control_playback(false, true, false, false));
+    }
+
+    #[test]
+    fn normalizes_comma_separated_qq_music_content_type() {
+        assert_eq!(
+            normalize_artwork_mime_type("image/jpeg,image/jpe,image/jpg"),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            normalize_artwork_mime_type(" IMAGE/JPG ; q=1, image/png"),
+            Some("image/jpeg")
+        );
+    }
+
+    #[test]
+    fn sniffs_raster_mime_when_provider_metadata_is_missing_or_wrong() {
+        assert_eq!(
+            artwork_mime_type("application/octet-stream", b"\xff\xd8\xff\xe0"),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            artwork_mime_type("", b"\x89PNG\r\n\x1a\nmore"),
+            Some("image/png")
+        );
+        assert_eq!(artwork_mime_type("text/html", b"<html>"), None);
+    }
+
+    #[test]
+    fn artwork_retry_backoff_is_bounded() {
+        assert_eq!(artwork_retry_delay(0), Duration::from_secs(1));
+        assert_eq!(artwork_retry_delay(2), Duration::from_secs(5));
+        assert_eq!(artwork_retry_delay(10), Duration::from_secs(30));
     }
 }
