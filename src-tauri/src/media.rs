@@ -11,7 +11,7 @@ use std::{
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 use windows::{
     Foundation::TypedEventHandler,
     Media::Control::{
@@ -314,6 +314,23 @@ pub fn current_state(runtime: &MediaRuntime) -> MediaConnectState {
         .lock()
         .map(|state| state.clone())
         .unwrap_or_default()
+}
+
+#[tauri::command]
+pub(crate) async fn media_command(
+    command: String,
+    session_revision: u64,
+    runtime: State<'_, MediaRuntime>,
+) -> Result<bool, String> {
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || send_command(&runtime, &command, session_revision))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub(crate) fn media_status(runtime: State<'_, MediaRuntime>) -> MediaConnectState {
+    current_state(&runtime)
 }
 
 pub fn send_command(

@@ -72,9 +72,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## 项目结构
 
-- `src/`：状态优先级、界面、设置与计时器表现层
-- `src-tauri/src/`：窗口壳、媒体会话、Core Audio、全屏感知和后台计时调度
+- `src/`：WebView 应用；按 `app/`、`features/`、`platform/`、`shell/`、`ui/` 分层
+- `src-tauri/src/`：Windows 原生宿主；`lib.rs` 仅装配，能力按模块组织
 - `assets/` 与 `src-tauri/icons/`：Atoll 品牌图形与 Windows 图标
+- `ARCHITECTURE.md`：完整职责边界、依赖规则、IPC 契约与新功能放置规范
 - `PRODUCT.md`：长期产品约束
 - `DESIGN.md`：视觉系统与组件规则
 - `.impeccable/surfaces/`：当前主界面的 surface brief

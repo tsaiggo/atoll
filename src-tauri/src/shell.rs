@@ -2,7 +2,7 @@ use std::{thread, time::Duration};
 
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewWindow};
 
-use crate::{
+use crate::runtime::{
     corner_radius, is_current_transition, lock_window_mutation, next_transition_epoch,
     set_corner_radius, set_top_margin, top_margin, RuntimeState,
 };
@@ -138,6 +138,18 @@ pub fn start_display_watcher(app: AppHandle) {
     });
 }
 
+struct ShellRequest {
+    shell: String,
+    width: f64,
+    height: f64,
+    corner_radius: f64,
+    animated: bool,
+    top_margin: f64,
+}
+
+// Tauri exposes command arguments as a flat IPC contract, so this boundary intentionally
+// mirrors the seven values sent by src/platform/native.ts.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn set_window_shell(
     window: WebviewWindow,
@@ -149,32 +161,29 @@ pub async fn set_window_shell(
     top_margin: f64,
     theme: String,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        accept_window_shell(
-            window,
-            shell,
-            width,
-            height,
-            corner_radius,
-            animated,
-            top_margin,
-            theme,
-        )
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    let request = ShellRequest {
+        shell,
+        width,
+        height,
+        corner_radius,
+        animated,
+        top_margin,
+    };
+    let _ = theme;
+    tauri::async_runtime::spawn_blocking(move || accept_window_shell(window, request))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
-fn accept_window_shell(
-    window: WebviewWindow,
-    shell: String,
-    width: f64,
-    height: f64,
-    corner_radius: f64,
-    animated: bool,
-    top_margin: f64,
-    _theme: String,
-) -> Result<(), String> {
+fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(), String> {
+    let ShellRequest {
+        shell,
+        width,
+        height,
+        corner_radius,
+        animated,
+        top_margin,
+    } = request;
     let target_corner_radius = corner_radius.max(0.0);
     let (epoch, start_width, start_height) = {
         // Keep accepting a newer request and each native mutation mutually ordered.
