@@ -45,6 +45,7 @@ interface MediaCommandFeedback {
 interface WindowDimensions {
   width: number;
   height: number;
+  cornerRadius: number;
 }
 
 interface NativeAcceptedShell {
@@ -61,11 +62,13 @@ const nativeRuntime = Boolean(window.__TAURI_INTERNALS__);
 const requestedPreviewMode = new URLSearchParams(location.search).get("preview");
 const previewMode =
   import.meta.env.DEV && isPreviewMode(requestedPreviewMode) ? requestedPreviewMode : null;
+document.documentElement.classList.toggle("native-runtime", nativeRuntime);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const lightColorScheme = window.matchMedia("(prefers-color-scheme: light)");
 const dimensions: Record<Exclude<ShellState, "hidden">, WindowDimensions> = {
-  reef: { width: 80, height: 12 },
-  compact: { width: 188, height: 44 },
-  expanded: { width: 408, height: 160 },
+  reef: { width: 80, height: 12, cornerRadius: 12 },
+  compact: { width: 188, height: 44, cornerRadius: 22 },
+  expanded: { width: 384, height: 148, cornerRadius: 12 },
 };
 
 let settings = loadSettings();
@@ -80,8 +83,10 @@ let timer: TimerStatus = loadTimer();
 let fullscreen = false;
 let fullscreenOverride = false;
 let demoOverride: ContentKind | null = null;
-let compactExpiryId: number | null = null;
+let transientExpiryId: number | null = null;
 let expandedExpiryId: number | null = null;
+let expandedExpiryDeadline = 0;
+let expandedSessionRevision = 0;
 let timerTickId: number | null = null;
 let mediaProgressTickId: number | null = null;
 let volumeVisibleUntil = 0;
@@ -90,7 +95,6 @@ let lastMediaIdentity = "";
 let pendingMediaCommand: MediaCommand | null = null;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
 let mediaCommandFeedbackId: number | null = null;
-let isPointerInside = false;
 let firstRun = previewMode ? false : consumeFirstRun();
 let animateNextShellContent = false;
 let manuallyHidden = false;
@@ -107,12 +111,25 @@ function isPreviewMode(value: string | null): value is PreviewMode {
   );
 }
 
+function shellGeometryStyle(state: Exclude<ShellState, "hidden">): string {
+  return `style="--shell-bottom-radius:${dimensions[state].cornerRadius}px"`;
+}
+
 app.addEventListener("click", onClick);
 app.addEventListener("contextmenu", onContextMenu);
-app.addEventListener("pointerenter", onPointerEnter);
-app.addEventListener("pointerleave", onPointerLeave);
+app.addEventListener("pointerenter", onExpandedActivity);
+app.addEventListener("pointermove", onExpandedActivity);
+app.addEventListener("pointerdown", onExpandedActivity);
+app.addEventListener("pointerleave", onExpandedActivity);
+app.addEventListener("pointercancel", onExpandedActivity);
 window.addEventListener("keydown", onKeyDown);
 reducedMotion.addEventListener("change", () => render());
+lightColorScheme.addEventListener("change", () => {
+  nativeAcceptedShell = null;
+  if (nativeRuntime && shell !== "hidden") {
+    void setShell(shell, false, true);
+  }
+});
 document.addEventListener("visibilitychange", () => {
   if (!previewMode && !document.hidden) {
     reconcilePresentation();
@@ -140,7 +157,7 @@ async function startApplication(): Promise<void> {
   } else if (firstRun) {
     content = "welcome";
     await setShell("compact", false);
-    setCompactExpiry(4200);
+    setTransientExpiry(4200);
   } else {
     reconcilePresentation(false);
   }
@@ -238,17 +255,12 @@ function onContextMenu(event: MouseEvent): void {
   }
 }
 
-function onPointerEnter(): void {
-  isPointerInside = true;
-  clearExpandedExpiry();
-}
-
-function onPointerLeave(): void {
-  isPointerInside = false;
-  if (shell === "expanded") setExpandedExpiry();
+function onExpandedActivity(): void {
+  resetExpandedExpiry();
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  resetExpandedExpiry();
   if (event.key === "Escape" && shell === "expanded") {
     event.preventDefault();
     collapse();
@@ -459,7 +471,7 @@ function updateMedia(payload: NativeMediaPayload | null, fromDemo = false): void
     mediaFlashUntil = Date.now() + settings.compactTimeoutMs;
     content = "media";
     if (!manuallyHidden && shell !== "expanded") void setShell("compact");
-    setCompactExpiry(settings.compactTimeoutMs);
+    setTransientExpiry(settings.compactTimeoutMs);
   } else {
     reconcilePresentation();
   }
@@ -476,14 +488,12 @@ function updateVolume(payload: NativeVolumePayload): void {
   if (manuallyHidden) return;
   if (shell === "expanded") {
     render();
-    window.setTimeout(() => {
-      if (shell === "expanded") render();
-    }, 1850);
+    setTransientExpiry(1800);
     return;
   }
   content = "volume";
   void setShell("compact");
-  setCompactExpiry(1800);
+  setTransientExpiry(1800);
 }
 
 function startTimer(minutes: number): void {
@@ -507,7 +517,7 @@ function finishTimer(): void {
   persistTimer();
   content = "timer-finished";
   expandedPanel = "timer-finished";
-  clearCompactExpiry();
+  clearTransientExpiry();
   void setShell(
     manuallyHidden || shouldHideForFullscreen()
       ? "hidden"
@@ -561,7 +571,6 @@ function refreshMediaProgress(): void {
   const ratio = Math.min(1, Math.max(0, position / media.durationMs));
   const progress = app.querySelector<HTMLElement>("[data-media-progress]");
   const elapsed = app.querySelector<HTMLElement>("[data-media-elapsed]");
-  const remaining = app.querySelector<HTMLElement>("[data-media-remaining]");
   if (progress) {
     progress.style.transform = `scaleX(${ratio})`;
     progress.parentElement?.setAttribute("aria-valuenow", String(Math.floor(position / 1000)));
@@ -571,9 +580,6 @@ function refreshMediaProgress(): void {
     );
   }
   if (elapsed) elapsed.textContent = formatPlaybackTime(position);
-  if (remaining) {
-    remaining.textContent = `−${formatPlaybackTime(Math.max(0, media.durationMs - position))}`;
-  }
 }
 
 function reconcilePresentation(
@@ -642,22 +648,25 @@ async function setShell(
   const previous = shell;
   const enteredExpanded = previous !== "expanded" && next === "expanded";
   if (next !== "expanded") clearExpandedExpiry();
-  if (next !== "compact") clearCompactExpiry();
   if (previous !== next || forceNative) shellRevision += 1;
   const revision = shellRevision;
   animateNextShellContent = animated && previous !== next;
   shell = next;
   if (next !== "hidden") lastVisibleShell = next;
   render();
+  if (!previewMode && enteredExpanded) {
+    setExpandedExpiry();
+  } else if (!previewMode && next === "expanded" && expandedExpiryId === null) {
+    resetExpandedExpiry();
+  }
   if (!nativeRuntime) return;
 
-  const size = next === "hidden" ? dimensions[lastVisibleShell] : dimensions[next];
-  const signature = `${next}:${size.width}x${size.height}:${settings.topMargin}`;
-  let accepted = false;
+  const geometry = next === "hidden" ? dimensions[lastVisibleShell] : dimensions[next];
+  const theme = lightColorScheme.matches ? "light" : "dark";
+  const signature = `${next}:${geometry.width}x${geometry.height}:r${geometry.cornerRadius}:${settings.topMargin}:${theme}`;
   const syncNativeShell = async (): Promise<void> => {
     if (revision !== shellRevision) return;
     if (!forceNative && nativeAcceptedShell?.signature === signature) {
-      accepted = true;
       return;
     }
     let lastError: unknown;
@@ -665,15 +674,14 @@ async function setShell(
       try {
         await invoke("set_window_shell", {
           shell: next,
-          width: size.width,
-          height: size.height,
+          width: geometry.width,
+          height: geometry.height,
+          cornerRadius: geometry.cornerRadius,
           animated: attempt === 0 ? animated : false,
           topMargin: settings.topMargin,
+          theme,
         });
         nativeAcceptedShell = { shell: next, signature };
-        if (revision === shellRevision) {
-          accepted = true;
-        }
         return;
       } catch (error: unknown) {
         lastError = error;
@@ -693,50 +701,62 @@ async function setShell(
     () => undefined,
   );
   await operation;
-
-  if (
-    accepted &&
-    revision === shellRevision &&
-    shell === "expanded" &&
-    (enteredExpanded || forceNative) &&
-    !isPointerInside
-  ) {
-    setExpandedExpiry();
-  }
 }
 
-function setCompactExpiry(milliseconds: number): void {
-  clearCompactExpiry();
-  compactExpiryId = window.setTimeout(() => {
-    compactExpiryId = null;
+function setTransientExpiry(milliseconds: number): void {
+  clearTransientExpiry();
+  transientExpiryId = window.setTimeout(() => {
+    transientExpiryId = null;
     firstRun = false;
     demoOverride = demoOverride === "volume" ? null : demoOverride;
     reconcilePresentation();
   }, milliseconds);
 }
 
-function clearCompactExpiry(): void {
-  if (compactExpiryId === null) return;
-  window.clearTimeout(compactExpiryId);
-  compactExpiryId = null;
+function clearTransientExpiry(): void {
+  if (transientExpiryId === null) return;
+  window.clearTimeout(transientExpiryId);
+  transientExpiryId = null;
 }
 
 function setExpandedExpiry(): void {
   clearExpandedExpiry();
-  const revision = shellRevision;
+  expandedExpiryDeadline = Date.now() + settings.expandedTimeoutMs;
+  scheduleExpandedExpiry(expandedSessionRevision);
+}
+
+function scheduleExpandedExpiry(sessionRevision: number): void {
+  const delay = Math.max(0, expandedExpiryDeadline - Date.now());
   expandedExpiryId = window.setTimeout(() => {
     expandedExpiryId = null;
-    if (revision === shellRevision && !isPointerInside && shell === "expanded") collapse();
-  }, settings.expandedTimeoutMs);
+    if (sessionRevision !== expandedSessionRevision || shell !== "expanded") return;
+
+    if (pendingMediaCommand !== null) {
+      expandedExpiryDeadline = Date.now() + settings.expandedTimeoutMs;
+      scheduleExpandedExpiry(sessionRevision);
+      return;
+    }
+
+    const remaining = expandedExpiryDeadline - Date.now();
+    if (remaining > 0) {
+      scheduleExpandedExpiry(sessionRevision);
+      return;
+    }
+
+    collapse();
+  }, delay);
 }
 
 function resetExpandedExpiry(): void {
-  if (shell === "expanded" && !isPointerInside) setExpandedExpiry();
+  if (previewMode || shell !== "expanded") return;
+  expandedExpiryDeadline = Date.now() + settings.expandedTimeoutMs;
+  if (expandedExpiryId === null) scheduleExpandedExpiry(expandedSessionRevision);
 }
 
 function clearExpandedExpiry(): void {
-  if (expandedExpiryId === null) return;
-  window.clearTimeout(expandedExpiryId);
+  expandedSessionRevision += 1;
+  expandedExpiryDeadline = 0;
+  if (expandedExpiryId !== null) window.clearTimeout(expandedExpiryId);
   expandedExpiryId = null;
 }
 
@@ -868,7 +888,7 @@ function render(): void {
   }
   if (shell === "reef") {
     app.innerHTML = `
-      <button class="atoll-shell reef" type="button" aria-label="Open Atoll">
+      <button class="atoll-shell reef" ${shellGeometryStyle("reef")} type="button" aria-label="Open Atoll">
         <span class="reef__tide"></span>
       </button>`;
     scheduleMediaProgressTick();
@@ -879,7 +899,7 @@ function render(): void {
       content === "media" && media
         ? renderCompactMedia(motionClass)
         : `
-          <button class="atoll-shell compact compact--${content}${motionClass}" type="button" aria-label="${escapeHtml(compactAccessibleLabel())}">
+          <button class="atoll-shell compact compact--${content}${motionClass}" ${shellGeometryStyle("compact")} type="button" aria-label="${escapeHtml(compactAccessibleLabel())}">
             ${renderCompact()}
           </button>`;
     restoreFocusedAction(focusedAction);
@@ -887,7 +907,7 @@ function render(): void {
     return;
   }
   app.innerHTML = `
-    <section class="atoll-shell expanded expanded--${expandedPanel}${motionClass}" aria-label="Atoll quick controls">
+    <section class="atoll-shell expanded expanded--${expandedPanel}${motionClass}" ${shellGeometryStyle("expanded")} aria-label="Atoll quick controls">
       ${renderExpanded()}
     </section>`;
   restoreFocusedAction(focusedAction);
@@ -908,7 +928,7 @@ function renderCompactMedia(motionClass: string): string {
   const commandPending = pendingMediaCommand !== null;
   const toggleLabel = current.playing ? "Pause" : "Play";
   return `
-    <div class="atoll-shell compact compact--media${motionClass}" role="group" aria-label="Current media controls">
+    <div class="atoll-shell compact compact--media${motionClass}" ${shellGeometryStyle("compact")} role="group" aria-label="Current media controls">
       <button class="compact-media__open" type="button" data-action="open-media" aria-label="Open media controls for ${escapeHtml(current.title)}">
         ${renderCover(current, "cover cover--compact")}
         <span class="compact__copy" title="${escapeAttribute(`${current.title} — ${current.artist}`)}">
@@ -1037,6 +1057,10 @@ function renderMediaPanel(): string {
     current.durationMs > 0;
   const commandPending = pendingMediaCommand !== null;
   const sourceCopy = mediaCommandFeedback?.message ?? sourceDetail;
+  const footerContent =
+    !mediaCommandFeedback && Date.now() < volumeVisibleUntil
+      ? renderInlineVolume()
+      : `<span class="source-label ${mediaCommandFeedback?.failed ? "source-label--feedback" : ""}" aria-live="${mediaCommandFeedback ? "polite" : "off"}"><span class="source-label__dot" aria-hidden="true"></span><span>${escapeHtml(sourceCopy)}</span></span>`;
   return `
     <header class="expanded__header expanded__header--media">
       ${renderCover(current, "cover cover--expanded")}
@@ -1055,9 +1079,7 @@ function renderMediaPanel(): string {
       </div>
     </div>
     <footer class="expanded__footer">
-      <span class="source-label ${mediaCommandFeedback?.failed ? "source-label--feedback" : ""}" aria-live="${mediaCommandFeedback ? "polite" : "off"}">${icon("media")}<span>${escapeHtml(sourceCopy)}</span></span>
-      ${renderInlineVolume()}
-      <button class="text-button" type="button" data-action="open-home">${icon("back")}Home</button>
+      ${footerContent}
     </footer>`;
 }
 
@@ -1173,13 +1195,12 @@ function renderMediaProgress(current: MediaStatus): string {
   const ratio = Math.min(1, Math.max(0, position / current.durationMs));
   const elapsedSeconds = Math.floor(position / 1000);
   const durationSeconds = Math.floor(current.durationMs / 1000);
-  const remaining = Math.max(0, current.durationMs - position);
   return `
     <div class="media-progress">
       <span class="media-progress__track" role="progressbar" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="${durationSeconds}" aria-valuenow="${elapsedSeconds}" aria-valuetext="${formatPlaybackTime(position)} of ${formatPlaybackTime(current.durationMs)}">
         <span class="media-progress__fill" data-media-progress style="transform:scaleX(${ratio})"></span>
       </span>
-      <span class="media-progress__time" aria-hidden="true"><span data-media-elapsed>${formatPlaybackTime(position)}</span><span data-media-remaining>−${formatPlaybackTime(remaining)}</span></span>
+      <span class="media-progress__time" aria-hidden="true"><span data-media-elapsed>${formatPlaybackTime(position)}</span><span>${formatPlaybackTime(current.durationMs)}</span></span>
     </div>`;
 }
 

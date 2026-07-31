@@ -203,7 +203,7 @@
       "refersTo": "shell-expanded",
       "description": "The three-row quick-action surface used for media, timer, home, and settings.",
       "html": "<section class=\"ds-expanded\"><header><strong>Atoll</strong><small>Your status, surfaced.</small></header><div class=\"ds-basin\">One current task</div><footer>Ctrl + Shift + Space</footer></section>",
-      "css": ".ds-expanded{position:relative;width:408px;height:160px;display:grid;grid-template-rows:auto 1fr auto;padding:12px 14px 10px;border-radius:0 0 24px 24px;color:#f5f7fa;background:#0b0d10;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif}.ds-expanded:before{content:\"\";position:absolute;top:0;left:50%;width:44px;height:2px;border-radius:0 0 3px 3px;background:#65d6c5;opacity:.78;transform:translateX(-50%)}.ds-expanded header{display:grid}.ds-expanded strong{font-size:13px}.ds-expanded small,.ds-expanded footer{color:#abb4c0;font-size:9.5px}.ds-basin{align-self:center;padding:12px;border-radius:14px;color:#abb4c0;background:#15181d;font-size:12px}"
+      "css": ".ds-expanded{position:relative;width:384px;height:148px;display:grid;grid-template-rows:auto 1fr auto;padding:8px 16px;border-radius:0 0 12px 12px;color:#f5f7fa;background:#0b0d10;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif}.ds-expanded:before{content:\"\";position:absolute;top:0;left:50%;width:40px;height:1px;border-radius:0 0 3px 3px;background:#65d6c5;opacity:.72;transform:translateX(-50%)}.ds-expanded header{display:grid}.ds-expanded strong{font-size:13px}.ds-expanded small,.ds-expanded footer{color:#abb4c0;font-size:9.5px}.ds-basin{align-self:center;padding:8px;border-radius:8px;color:#abb4c0;background:#15181d;font-size:12px}"
     },
     {
       "name": "Primary Control",
@@ -211,7 +211,7 @@
       "refersTo": "button-primary",
       "description": "The single highest-confidence action in an Expanded panel.",
       "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8 6.5 18 12 8 17.5Z\" fill=\"currentColor\"/></svg>Continue</button>",
-      "css": ".ds-btn-primary{min-width:82px;height:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border:0;border-radius:11px;color:#071511;background:#65d6c5;font:620 10px \"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;cursor:pointer;transition:background-color 120ms ease-out}.ds-btn-primary svg{width:14px;height:14px}.ds-btn-primary:hover{background:#81e3d4}.ds-btn-primary:focus-visible{outline:2px solid #65d6c5;outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
+      "css": ".ds-btn-primary{min-width:82px;height:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border:0;border-radius:8px;color:#071511;background:#65d6c5;font:620 10px \"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;cursor:pointer;transition:background-color 120ms ease-out}.ds-btn-primary svg{width:14px;height:14px}.ds-btn-primary:hover{background:#81e3d4}.ds-btn-primary:focus-visible{outline:2px solid #65d6c5;outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
     },
     {
       "name": "Media Transport",
@@ -226,7 +226,7 @@
       "refersTo": "toggle-on",
       "description": "A compact behavior switch that keeps accent color subordinate to the label.",
       "html": "<button class=\"ds-setting\" role=\"switch\" aria-checked=\"true\"><span><strong>Motion</strong><small>Smooth state changes</small></span><i><b></b></i></button>",
-      "css": ".ds-setting{width:310px;min-height:33px;display:flex;align-items:center;justify-content:space-between;padding:3px 5px;border:0;border-radius:10px;color:#f5f7fa;background:transparent;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;text-align:left;cursor:pointer}.ds-setting:hover{background:#15181d}.ds-setting>span{display:grid}.ds-setting strong{font-size:10.5px}.ds-setting small{color:#abb4c0;font-size:8.5px}.ds-setting i{width:30px;height:17px;display:flex;align-items:center;padding:2px;border-radius:10px;background:rgba(101,214,197,.44)}.ds-setting b{width:13px;height:13px;border-radius:50%;background:#65d6c5;transform:translateX(13px)}.ds-setting:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+      "css": ".ds-setting{width:310px;min-height:31px;display:flex;align-items:center;justify-content:space-between;padding:3px 5px;border:0;border-radius:8px;color:#f5f7fa;background:transparent;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;text-align:left;cursor:pointer}.ds-setting:hover{background:#15181d}.ds-setting>span{display:grid}.ds-setting strong{font-size:10.5px}.ds-setting small{color:#abb4c0;font-size:8.5px}.ds-setting i{width:30px;height:17px;display:flex;align-items:center;padding:2px;border-radius:10px;background:rgba(101,214,197,.44)}.ds-setting b{width:13px;height:13px;border-radius:50%;background:#65d6c5;transform:translateX(13px)}.ds-setting:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
     }
   ],
   "narrative": {

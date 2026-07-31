@@ -26,6 +26,7 @@ pub struct RuntimeState {
     timer_epoch: AtomicU64,
     fullscreen: AtomicBool,
     top_margin_bits: AtomicU64,
+    corner_radius_bits: AtomicU64,
 }
 
 impl Default for RuntimeState {
@@ -36,6 +37,7 @@ impl Default for RuntimeState {
             timer_epoch: AtomicU64::new(0),
             fullscreen: AtomicBool::new(false),
             top_margin_bits: AtomicU64::new(0.0_f64.to_bits()),
+            corner_radius_bits: AtomicU64::new(12.0_f64.to_bits()),
         }
     }
 }
@@ -287,4 +289,14 @@ pub(crate) fn set_top_margin(state: &RuntimeState, top_margin: f64) {
 
 pub(crate) fn top_margin(state: &RuntimeState) -> f64 {
     f64::from_bits(state.top_margin_bits.load(Ordering::SeqCst))
+}
+
+pub(crate) fn set_corner_radius(state: &RuntimeState, corner_radius: f64) {
+    state
+        .corner_radius_bits
+        .store(corner_radius.to_bits(), Ordering::SeqCst);
+}
+
+pub(crate) fn corner_radius(state: &RuntimeState) -> f64 {
+    f64::from_bits(state.corner_radius_bits.load(Ordering::SeqCst))
 }
