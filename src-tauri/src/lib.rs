@@ -4,31 +4,40 @@ mod shell;
 mod timer;
 mod volume;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Mutex, MutexGuard,
+};
 
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+#[cfg(debug_assertions)]
+use tauri::menu::Submenu;
 use tauri_plugin_global_shortcut::{
     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
 };
 
 pub struct RuntimeState {
     transition_epoch: AtomicU64,
+    window_mutation: Mutex<()>,
     timer_epoch: AtomicU64,
     fullscreen: AtomicBool,
     top_margin_bits: AtomicU64,
+    corner_radius_bits: AtomicU64,
 }
 
 impl Default for RuntimeState {
     fn default() -> Self {
         Self {
             transition_epoch: AtomicU64::new(0),
+            window_mutation: Mutex::new(()),
             timer_epoch: AtomicU64::new(0),
             fullscreen: AtomicBool::new(false),
             top_margin_bits: AtomicU64::new(0.0_f64.to_bits()),
+            corner_radius_bits: AtomicU64::new(12.0_f64.to_bits()),
         }
     }
 }
@@ -45,11 +54,22 @@ fn show_context_menu(
 }
 
 #[tauri::command]
-fn media_command(
+async fn media_command(
     command: String,
+    session_revision: u64,
     runtime: tauri::State<'_, media::MediaRuntime>,
 ) -> Result<bool, String> {
-    media::send_command(&runtime, &command)
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        media::send_command(&runtime, &command, session_revision)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn media_status(runtime: tauri::State<'_, media::MediaRuntime>) -> media::MediaConnectState {
+    media::current_state(&runtime)
 }
 
 #[tauri::command]
@@ -71,51 +91,71 @@ fn create_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Me
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Exit Atoll", true, None::<&str>)?;
 
-    let demo_idle = MenuItem::with_id(app, "demo:idle", "Idle", true, None::<&str>)?;
-    let demo_media =
-        MenuItem::with_id(app, "demo:media", "Media playing", true, None::<&str>)?;
-    let demo_volume = MenuItem::with_id(app, "demo:volume", "Volume", true, None::<&str>)?;
-    let demo_timer = MenuItem::with_id(
-        app,
-        "demo:timer-running",
-        "Timer running",
-        true,
-        None::<&str>,
-    )?;
-    let demo_finished = MenuItem::with_id(
-        app,
-        "demo:timer-finished",
-        "Timer finished",
-        true,
-        None::<&str>,
-    )?;
-    let demo = Submenu::with_items(
-        app,
-        "Demo",
-        true,
-        &[
-            &demo_idle,
-            &demo_media,
-            &demo_volume,
-            &demo_timer,
-            &demo_finished,
-        ],
-    )?;
-    let separator_one = PredefinedMenuItem::separator(app)?;
-    let separator_two = PredefinedMenuItem::separator(app)?;
+    #[cfg(debug_assertions)]
+    {
+        let demo_idle = MenuItem::with_id(app, "demo:idle", "Idle", true, None::<&str>)?;
+        let demo_media =
+            MenuItem::with_id(app, "demo:media", "Media playing", true, None::<&str>)?;
+        let demo_volume = MenuItem::with_id(app, "demo:volume", "Volume", true, None::<&str>)?;
+        let demo_timer = MenuItem::with_id(
+            app,
+            "demo:timer-running",
+            "Timer running",
+            true,
+            None::<&str>,
+        )?;
+        let demo_finished = MenuItem::with_id(
+            app,
+            "demo:timer-finished",
+            "Timer finished",
+            true,
+            None::<&str>,
+        )?;
+        let demo = Submenu::with_items(
+            app,
+            "Demo",
+            true,
+            &[
+                &demo_idle,
+                &demo_media,
+                &demo_volume,
+                &demo_timer,
+                &demo_finished,
+            ],
+        )?;
+        let separator_one = PredefinedMenuItem::separator(app)?;
+        let separator_two = PredefinedMenuItem::separator(app)?;
 
-    Menu::with_items(
-        app,
-        &[
-            &toggle,
-            &expand,
-            &separator_one,
-            &demo,
-            &settings,
-            &separator_two,
-            &quit,
-        ],
-    )
+        Menu::with_items(
+            app,
+            &[
+                &toggle,
+                &expand,
+                &separator_one,
+                &demo,
+                &settings,
+                &separator_two,
+                &quit,
+            ],
+        )
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let separator_one = PredefinedMenuItem::separator(app)?;
+        let separator_two = PredefinedMenuItem::separator(app)?;
+        Menu::with_items(
+            app,
+            &[
+                &toggle,
+                &expand,
+                &separator_one,
+                &settings,
+                &separator_two,
+                &quit,
+            ],
+        )
+    }
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<QuickMenu> {
@@ -174,9 +214,6 @@ fn setup_shortcut(app: &tauri::App) -> tauri::Result<()> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = shell::show_without_focus(&window);
-            }
             emit_action(app, "single-instance");
         }))
         .plugin(
@@ -205,6 +242,7 @@ pub fn run() {
             shell::set_window_shell,
             show_context_menu,
             media_command,
+            media_status,
             is_fullscreen_active,
             timer::schedule_timer
         ])
@@ -218,6 +256,13 @@ pub(crate) fn next_transition_epoch(state: &RuntimeState) -> u64 {
 
 pub(crate) fn is_current_transition(state: &RuntimeState, epoch: u64) -> bool {
     state.transition_epoch.load(Ordering::SeqCst) == epoch
+}
+
+pub(crate) fn lock_window_mutation(state: &RuntimeState) -> MutexGuard<'_, ()> {
+    state
+        .window_mutation
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub(crate) fn next_timer_epoch(state: &RuntimeState) -> u64 {
@@ -244,4 +289,14 @@ pub(crate) fn set_top_margin(state: &RuntimeState, top_margin: f64) {
 
 pub(crate) fn top_margin(state: &RuntimeState) -> f64 {
     f64::from_bits(state.top_margin_bits.load(Ordering::SeqCst))
+}
+
+pub(crate) fn set_corner_radius(state: &RuntimeState, corner_radius: f64) {
+    state
+        .corner_radius_bits
+        .store(corner_radius.to_bits(), Ordering::SeqCst);
+}
+
+pub(crate) fn corner_radius(state: &RuntimeState) -> f64 {
+    f64::from_bits(state.corner_radius_bits.load(Ordering::SeqCst))
 }

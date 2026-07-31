@@ -2,23 +2,34 @@
 name: Atoll
 description: Your status, surfaced.
 colors:
-  reef-black: "#0b0d10"
-  raised-basin: "#15181d"
-  soft-basin: "#1b1f25"
-  foam-white: "#f5f7fa"
-  mist-text: "#abb4c0"
-  quiet-slate: "#78828e"
+  reef-black: "#202020"
+  raised-basin: "rgba(255, 255, 255, 0.0605)"
+  soft-basin: "rgba(255, 255, 255, 0.0837)"
+  foam-white: "#f5f7f7"
+  mist-text: "#aab5b2"
+  quiet-slate: "#7f8c88"
   tide-mint: "#65d6c5"
-  tide-mint-bright: "#81e3d4"
+  tide-mint-bright: "#79dfcf"
   tide-ink: "#071511"
   timer-sand: "#e6bd68"
   coral-finished: "#f07b6d"
-  edge-catchlight: "rgba(255, 255, 255, 0.11)"
-  meter-track: "#353b43"
+  acrylic-dark-fallback: "#2c2c2c"
+  acrylic-light-fallback: "#f9f9f9"
+  card-fill-dark: "rgba(255, 255, 255, 0.051)"
+  card-fill-light: "rgba(255, 255, 255, 0.702)"
+  card-stroke-dark: "rgba(0, 0, 0, 0.098)"
+  card-stroke-light: "rgba(0, 0, 0, 0.059)"
+  meter-track: "#35413e"
   completion-muted: "#d8aaa4"
   completion-ink: "#2a0e0a"
   switch-track: "#353b44"
   switch-thumb: "#d8dde4"
+  light-reef: "#f9f9f9"
+  light-raised-basin: "rgba(255, 255, 255, 0.702)"
+  light-soft-basin: "rgba(0, 0, 0, 0.0373)"
+  light-foam: "rgba(0, 0, 0, 0.894)"
+  light-mist: "rgba(0, 0, 0, 0.620)"
+  light-tide: "#16786c"
 typography:
   display:
     fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
@@ -37,7 +48,7 @@ typography:
     fontSize: "12px"
     fontWeight: 620
     lineHeight: 1.33
-    letterSpacing: "-0.012em"
+    letterSpacing: "-0.01em"
   label:
     fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "9.5px"
@@ -78,16 +89,19 @@ rounded:
   hairline: "2px"
   tide-line: "3px"
   small: "8px"
-  preset: "9px"
-  control-soft: "10px"
-  control: "11px"
+  preset: "8px"
+  control-soft: "8px"
+  control: "8px"
+  compact-inset: "9px"
+  compact-artwork: "10px"
+  switch-track: "10px"
   medium: "12px"
-  card: "14px"
+  card: "8px"
   compact-radius: "22px"
-  expanded-radius: "24px"
+  expanded-radius: "12px"
   reef: "0 0 12px 12px"
   compact: "0 0 22px 22px"
-  expanded: "0 0 24px 24px"
+  expanded: "0 0 12px 12px"
   circle: "50%"
 spacing:
   hairline: "2px"
@@ -97,19 +111,19 @@ spacing:
   shell: "14px"
 components:
   shell-compact:
-    backgroundColor: "{colors.reef-black}"
+    backgroundColor: "WinUI Acrylic fallback + theme Card fill"
     textColor: "{colors.foam-white}"
     typography: "{typography.body}"
     rounded: "{rounded.compact}"
     padding: "5px 9px 5px 7px"
     size: "188px × 44px"
   shell-expanded:
-    backgroundColor: "{colors.reef-black}"
+    backgroundColor: "WinUI Acrylic fallback + theme Card fill"
     textColor: "{colors.foam-white}"
     typography: "{typography.body}"
     rounded: "{rounded.expanded}"
-    padding: "12px 14px 10px"
-    size: "408px × 160px"
+    padding: "8px 16px"
+    size: "384px × 148px"
   button-primary:
     backgroundColor: "{colors.tide-mint}"
     textColor: "{colors.tide-ink}"
@@ -125,7 +139,7 @@ components:
     padding: "0 12px"
     height: "32px"
   card-media:
-    backgroundColor: "{colors.raised-basin}"
+    backgroundColor: "transparent; {colors.raised-basin} on hover"
     textColor: "{colors.foam-white}"
     rounded: "{rounded.card}"
     padding: "7px 8px"
@@ -142,7 +156,7 @@ components:
 
 **Creative North Star: "The Quiet Tide Line"**
 
-Atoll is a dark, edge-attached instrument that feels grown from the top of the display rather than placed on it. Its material is dense and calm: near-black basins, one thin mint tide line, and content that appears only when it earns the space. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
+Atoll is an edge-attached instrument that feels grown from the top of the display rather than placed on it. Its shell follows the Windows app theme through the official Acrylic fallback colors, WinUI Card fill, and a single Card contour; one thin tide line remains the Atoll signature. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
 
 The shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life; sand marks elapsed time; coral is reserved for a completed timer that requires acknowledgement.
 
@@ -151,12 +165,12 @@ The shell is the identity. Reef, Compact, and Expanded are three expressions of 
 - Edge-attached silhouettes with open top edges and rounded lower corners.
 - Dense information hierarchy sized for a glance, not a dashboard.
 - A single tide-line signature shared across every shell state.
-- Tonal layering and ambient depth instead of bright borders.
+- Fluent Card material and one precise contour instead of decorative highlights.
 - Authored outline icons and tabular numerals for changing values.
 
 ## Colors
 
-The palette is a submerged neutral field with one cool living accent and two narrowly scoped semantic signals.
+The palette is a submerged neutral field with one cool living accent and two narrowly scoped semantic signals. Windows light/dark preference is the source of truth and changes must repaint in place without rebuilding or focusing the window. Light mode uses deeper teal, sand, and coral values so semantic controls retain contrast instead of merely inverting the dark palette.
 
 ### Primary
 
@@ -169,12 +183,15 @@ The palette is a submerged neutral field with one cool living accent and two nar
 
 ### Neutral
 
-- **Reef Black:** The continuous outer shell.
-- **Raised Basin:** Interactive rows, media controls, and secondary buttons.
+- **Acrylic Fallback:** The system-aligned solid backing used by the exact-fit native shell. It avoids rectangular compositor spill outside Atoll's lower corners.
+- **Card Fill:** The official WinUI Card overlay above the fallback backing in each theme.
+- **Card Stroke:** One official WinUI contour around the complete shell.
+- **Raised Basin:** Hovered rows and secondary buttons.
 - **Soft Basin:** Gentle hover and nested-control separation.
 - **Foam White:** Primary text and high-confidence values.
 - **Mist Text:** Supporting labels and metadata.
 - **Quiet Slate:** Low-priority hints and shortcut labels.
+- **Light Reef:** A neutral Windows Card surface with dark system text and the same one-pixel contour.
 
 **The One Tide Rule.** Mint should remain a minority of the visible surface; use it to explain state, not to decorate empty space.
 
@@ -198,26 +215,25 @@ The palette is a submerged neutral field with one cool living accent and two nar
 
 ## Layout
 
-Atoll is anchored to the physical top-center of the primary display. Its nominal shells are Reef at 80 × 12 DIP, Compact at 188 × 44 DIP, and Expanded at 408 × 160 DIP. The top edge stays visually open while the lower corners carry the silhouette.
+Atoll is anchored to the physical top-center of the primary display. Its nominal shells are Reef at 80 × 12 DIP, Compact at 188 × 44 DIP, and Expanded at 384 × 148 DIP. The top edge stays visually open while the lower corners carry the silhouette.
 
-Expanded uses three short rows—header, one task area, footer—with no more than three major operation groups. Internal spacing follows a tight 2/5/8/12/14 rhythm. Album art and state glyphs occupy the leading edge; the highest-value action sits at the trailing edge or the optical center.
+Expanded uses three short rows—header, one task area, footer—with no more than three major operation groups. Its 16 DIP horizontal inset and 4/8/16 rhythm borrow the calm density of Windows Widgets. Album art and state glyphs occupy the leading edge; the highest-value action sits at the trailing edge or the optical center.
 
 The native host, not CSS media queries, owns display scaling and repositioning. Content must remain clipped and legible at 125%, 150%, and 200% scaling, including on displays with negative desktop coordinates.
 
 ## Elevation & Depth
 
-Atoll uses a hybrid of tonal layering and one ambient shell shadow. Nested surfaces are differentiated primarily by Reef Black, Raised Basin, and Soft Basin. A faint internal top highlight keeps the object legible against dark windows without creating a game-HUD border.
+Atoll uses the official WinUI Acrylic fallback color as its native backing and the official Card fill as its content layer. Top-level Accent Acrylic is intentionally disabled because Windows paints that visual to the rectangular HWND instead of reliably honoring Atoll's asymmetric region. Nested surfaces are differentiated by subtle Fluent neutral fills. The exact-fit transparent host does not reserve an external shadow gutter, so the shell uses one inset Card contour and no hand-drawn halo.
 
 ### Shadow Vocabulary
 
-- **Ambient Shell:** `0 12px 34px rgba(0, 0, 0, 0.42)` gives the floating shell quiet separation from the application below.
-- **Top Catchlight:** `inset 0 1px rgba(255, 255, 255, 0.08)` describes the upper material edge.
+- **Shell Contour:** One low-contrast inset pixel using `CardStrokeColorDefault`; no separate top highlight or lower lowlight.
 
 **The Basin Rule.** Add depth by changing surface tone before adding another shadow.
 
 ## Shapes
 
-The top edge is flush to the display and the lower edge is generously rounded. Reef uses the smallest lower-corner curve, Compact reads as a shallow hanging capsule, and Expanded retains the same geometry at card scale. Nested cards use softened rectangles; transport and status glyphs may be circular when their action is atomic.
+The top edge is flush to the display. Reef uses the smallest lower-corner curve, Compact keeps Atoll's shallow hanging capsule, and Expanded settles into a restrained 12 DIP Windows widget-scale curve. Nested cards and rectangular controls use an 8 DIP radius; transport and status glyphs may be circular when their action is atomic.
 
 The logo is a sturdy incomplete elliptical ring with negative space. It must remain recognizable at tray scale and should never be replaced by a detailed illustration or a thin decorative orbit.
 
@@ -238,7 +254,7 @@ The logo is a sturdy incomplete elliptical ring with negative space. It must rem
 ### Cards / Containers
 
 - **Corner Style:** Generous nested-card curve.
-- **Background:** Raised Basin at rest, Soft Basin or a slightly brighter neutral on hover.
+- **Background:** Media rows are transparent at rest and lift to Raised Basin on hover; denser setting rows may use a basin at rest.
 - **Shadow Strategy:** No nested shadows.
 - **Internal Padding:** Tight, vertically centered spacing suited to the fixed-height shell.
 
@@ -262,6 +278,7 @@ The switch is a short dark track with a solid circular thumb. The on state uses 
 - **Do** keep the most important value readable in a peripheral glance.
 - **Do** use tabular numerals for time and percentage changes.
 - **Do** update content in-place when the shell size does not change.
+- **Do** follow the live Windows app theme without changing window geometry, focus, or current state.
 - **Do** preserve a clear icon, label, or shape cue in addition to semantic color.
 
 ### Don't:

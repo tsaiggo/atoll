@@ -32,14 +32,8 @@ pub fn schedule_timer(
             .unwrap_or_default()
             .as_millis() as u64;
         if now_ms >= end_at_ms {
-            if !is_fullscreen(&runtime) || break_fullscreen {
-                if let Some(window) = app.get_webview_window("main") {
-                    // The window is non-focusable, so surfacing a completed timer
-                    // does not steal focus from the user's current application.
-                    let _ = crate::shell::show_without_focus(&window);
-                }
-            }
-            let _ = app.emit("timer-elapsed", ());
+            let should_surface = !is_fullscreen(&runtime) || break_fullscreen;
+            let _ = app.emit("timer-elapsed", should_surface);
             return;
         }
 

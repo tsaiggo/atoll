@@ -233,6 +233,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "windows",
  "windows-core 0.61.2",
+ "windows-future",
 ]
 
 [[package]]

@@ -10,13 +10,15 @@ Atoll 是一款面向 Windows 11 的顶部动态状态中心。它在空闲时�
 - Hidden、Reef、Compact、Expanded 四种原生窗口形态
 - 主显示器顶部居中定位，支持高 DPI、负坐标与显示器变化后的自动重定位
 - 不抢焦点、不进入普通任务栏列表，并用真实窗口区域避免透明角落截获点击
+- 自动跟随 Windows 应用浅色/深色主题，系统切换后原地更新，不重建窗口
 - 单实例、托盘入口、右键菜单和 `Ctrl + Shift + Space` 全局快捷键
-- Windows 当前媒体会话读取：封面、标题、艺术家、播放状态、上一首、播放/暂停、下一首
+- Atoll Connect 统一读取 Windows 媒体会话：QQ 音乐等兼容播放器的封面、标题、艺术家、真实进度与播放控制
+- 自动枚举多个播放器，并按正在播放、Windows 当前会话、最近选中会话稳定选择来源
 - 基于真实结束时间的专注计时器：5/10/25 分钟、暂停、继续、取消、重启与粘性完成状态
 - Core Audio 音量与静音事件反馈
 - 全屏应用自动隐藏，离开全屏后恢复有效状态
 - 本地设置与计时器持久化；无账号、遥测、分析或云端依赖
-- Idle、Media Playing、Volume、Timer Running、Timer Finished 共五种 Demo
+- 开发构建提供 Idle、Media Playing、Volume、Timer Running、Timer Finished 共五种 Demo；发布版不会显示虚构媒体入口
 
 ## 环境
 
@@ -50,12 +52,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - 点击顶部 Reef 打开 Atoll。
 - 点击 Compact 展开当前状态的详细控制。
 - 使用 `Ctrl + Shift + Space` 显示、展开或收起 Atoll；快捷键冲突不会阻止应用启动。
-- 右键 Atoll 或使用托盘菜单可显示/隐藏、展开/收起、切换 Demo、打开设置或退出。
+- 右键 Atoll 或使用托盘菜单可显示/隐藏、展开/收起、打开设置或退出；开发构建额外提供 Demo。
 - Expanded 首页提供 5、10、25 分钟专注计时。
 - 设置面板当前支持动画、全屏隐藏和 Idle 使用 Reef/Hidden；修改会立即生效并在重启后保留。
 - 默认全屏策略是始终隐藏；计时器完成状态会保留，离开全屏后立即显示。
 
-媒体信息来自 Windows Global System Media Transport Controls。播放器未发布媒体会话或不支持某个操作时，Atoll 会保持稳定并禁用相应控制，不伪造进度。
+媒体信息来自 Windows Global System Media Transport Controls，不读取播放器账号或私有数据。QQ 音乐等播放器只要向 Windows 发布媒体会话即可接入；播放器未发布会话、暂时缺少元数据或不支持某个操作时，Atoll 会显示对应兼容状态并禁用相应控制。
 
 ## 视觉验证
 
@@ -82,5 +84,6 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 - 第一版固定在主显示器顶部居中，尚未提供指定显示器、左/右对齐或尺寸调整 UI。
 - 设置页尚未包含开机启动、托盘开关、模块开关、快捷键编辑和超时调整。
+- Connect 当前自动选择最合适的媒体来源，尚未提供手动固定播放器或切换来源的 UI。
 - 全屏时采用保守策略：计时器完成不会突破全屏隐藏。
 - Windows 锁屏/解锁没有单独的会话事件监听；窗口由系统桌面隔离，计时器依靠墙钟时间在恢复后校正。

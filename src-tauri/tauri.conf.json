@@ -32,8 +32,7 @@
         "skipTaskbar": true,
         "shadow": false,
         "visible": false,
-        "dragDropEnabled": false,
-        "theme": "Dark"
+        "dragDropEnabled": false
       }
     ],
     "security": {

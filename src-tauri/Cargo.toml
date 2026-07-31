@@ -26,6 +26,7 @@ windows = { version = "=0.61.3", features = [
   "Media_Control",
   "Storage_Streams",
   "Win32_Foundation",
+  "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
   "Win32_Media_Audio",
   "Win32_Media_Audio_Endpoints",
@@ -36,3 +37,4 @@ windows = { version = "=0.61.3", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 windows-core = "=0.61.2"
+windows-future = "=0.2.1"
