@@ -1,17 +1,12 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { consumeFirstRun, loadSettings, resetSettings, saveSettings, type AtollSettings } from "./config";
+import type { AppViewModel, ExpandedPanel, PreviewMode } from "./app/types";
+import { consumeFirstRun, loadSettings, resetSettings, saveSettings } from "./config";
 import {
   createTimer,
   DEMO_MEDIA,
   EMPTY_TIMER,
-  formatDuration,
-  formatPlaybackTime,
-  mediaPositionMs,
   normalizeMedia,
   pauseTimer,
   reconcileTimer,
-  remainingMs,
   restartTimer,
   resumeTimer,
   type ContentKind,
@@ -24,29 +19,28 @@ import {
   type TimerStatus,
   type VolumeStatus,
 } from "./domain";
-import { icon } from "./icons";
+import {
+  commandPendingMessage,
+  mediaCommandEnabled,
+  mediaIdentityFor,
+  optimisticPlaybackToggle,
+  type MediaCommand,
+  type MediaCommandFeedback,
+} from "./features/media/commands";
+import { loadTimer, saveTimer } from "./features/timer/storage";
+import {
+  applyNativeShell,
+  getFullscreen,
+  getMediaStatus,
+  nativeRuntime,
+  runNativeMediaCommand,
+  scheduleNativeTimer,
+  showNativeContextMenu,
+  subscribeNativeEvents,
+} from "./platform/native";
+import { SHELL_GEOMETRY } from "./shell/geometry";
+import { renderApp, updateMediaProgress } from "./ui/render";
 import "./styles.css";
-
-declare global {
-  interface Window {
-    __TAURI_INTERNALS__?: unknown;
-  }
-}
-
-type ExpandedPanel = "home" | "media" | "timer" | "settings" | "timer-finished";
-type PreviewMode = "reef" | "compact-media" | "expanded-media" | "timer-finished";
-type MediaCommand = "previous" | "toggle" | "next";
-
-interface MediaCommandFeedback {
-  message: string;
-  failed: boolean;
-}
-
-interface WindowDimensions {
-  width: number;
-  height: number;
-  cornerRadius: number;
-}
 
 interface NativeAcceptedShell {
   shell: ShellState;
@@ -57,19 +51,12 @@ const appElement = document.querySelector<HTMLElement>("#app");
 if (!appElement) throw new Error("Atoll root element was not found.");
 const app: HTMLElement = appElement;
 
-const TIMER_STORAGE_KEY = "atoll.timer.v1";
-const nativeRuntime = Boolean(window.__TAURI_INTERNALS__);
 const requestedPreviewMode = new URLSearchParams(location.search).get("preview");
 const previewMode =
   import.meta.env.DEV && isPreviewMode(requestedPreviewMode) ? requestedPreviewMode : null;
 document.documentElement.classList.toggle("native-runtime", nativeRuntime);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const lightColorScheme = window.matchMedia("(prefers-color-scheme: light)");
-const dimensions: Record<Exclude<ShellState, "hidden">, WindowDimensions> = {
-  reef: { width: 80, height: 12, cornerRadius: 12 },
-  compact: { width: 188, height: 44, cornerRadius: 22 },
-  expanded: { width: 384, height: 148, cornerRadius: 12 },
-};
 
 let settings = loadSettings();
 let shell: ShellState = "hidden";
@@ -111,10 +98,6 @@ function isPreviewMode(value: string | null): value is PreviewMode {
   );
 }
 
-function shellGeometryStyle(state: Exclude<ShellState, "hidden">): string {
-  return `style="--shell-bottom-radius:${dimensions[state].cornerRadius}px"`;
-}
-
 app.addEventListener("click", onClick);
 app.addEventListener("contextmenu", onContextMenu);
 app.addEventListener("pointerenter", onExpandedActivity);
@@ -145,7 +128,7 @@ if (previewMode) {
 
 async function startApplication(): Promise<void> {
   if (nativeRuntime) {
-    fullscreen = await invoke<boolean>("is_fullscreen_active").catch(() => false);
+    fullscreen = await getFullscreen().catch(() => false);
   }
   timer = reconcileTimer(timer);
   if (shouldHideForFullscreen()) {
@@ -164,30 +147,28 @@ async function startApplication(): Promise<void> {
   scheduleTimerTick();
 
   if (!nativeRuntime) return;
-  await Promise.all([
-    listen<string>("atoll-action", ({ payload }) => applyExternalAction(payload)),
-    listen<NativeMediaUpdatePayload>("media-update", ({ payload }) => updateMediaConnect(payload)),
-    listen<NativeVolumePayload>("system-volume", ({ payload }) => updateVolume(payload)),
-    listen("timer-elapsed", () => {
+  await subscribeNativeEvents({
+    onAction: applyExternalAction,
+    onMediaUpdate: updateMediaConnect,
+    onVolume: updateVolume,
+    onTimerElapsed: () => {
       if (timer.phase !== "running") return;
       timer = reconcileTimer(timer);
       if (timer.phase !== "finished") {
         timer = { ...timer, phase: "finished", endAt: null, pausedRemainingMs: 0 };
       }
       finishTimer();
-    }),
-    listen<{ fullscreen: boolean }>("fullscreen-changed", ({ payload }) => {
+    },
+    onFullscreenChanged: (payload) => {
       fullscreen = payload.fullscreen;
       if (!fullscreen) fullscreenOverride = false;
       reconcilePresentation();
-    }),
-  ]).catch((error: unknown) => console.warn("Atoll event bridge unavailable", error));
-  const initialMedia = await invoke<NativeMediaUpdatePayload>("media_status").catch(
-    (error: unknown) => {
-      console.warn("Unable to read the initial media state", error);
-      return null;
     },
-  );
+  }).catch((error: unknown) => console.warn("Atoll event bridge unavailable", error));
+  const initialMedia = await getMediaStatus().catch((error: unknown) => {
+    console.warn("Unable to read the initial media state", error);
+    return null;
+  });
   if (initialMedia) updateMediaConnect(initialMedia);
   syncNativeTimer();
 }
@@ -249,7 +230,7 @@ function onClick(event: MouseEvent): void {
 function onContextMenu(event: MouseEvent): void {
   event.preventDefault();
   if (nativeRuntime) {
-    void invoke("show_context_menu").catch((error: unknown) =>
+    void showNativeContextMenu().catch((error: unknown) =>
       console.warn("Unable to open the Atoll menu", error),
     );
   }
@@ -566,20 +547,7 @@ function scheduleMediaProgressTick(): void {
 }
 
 function refreshMediaProgress(): void {
-  if (!media || media.durationMs === undefined || media.durationMs <= 0) return;
-  const position = mediaPositionMs(media);
-  const ratio = Math.min(1, Math.max(0, position / media.durationMs));
-  const progress = app.querySelector<HTMLElement>("[data-media-progress]");
-  const elapsed = app.querySelector<HTMLElement>("[data-media-elapsed]");
-  if (progress) {
-    progress.style.transform = `scaleX(${ratio})`;
-    progress.parentElement?.setAttribute("aria-valuenow", String(Math.floor(position / 1000)));
-    progress.parentElement?.setAttribute(
-      "aria-valuetext",
-      `${formatPlaybackTime(position)} of ${formatPlaybackTime(media.durationMs)}`,
-    );
-  }
-  if (elapsed) elapsed.textContent = formatPlaybackTime(position);
+  updateMediaProgress(app, media);
 }
 
 function reconcilePresentation(
@@ -661,7 +629,7 @@ async function setShell(
   }
   if (!nativeRuntime) return;
 
-  const geometry = next === "hidden" ? dimensions[lastVisibleShell] : dimensions[next];
+  const geometry = next === "hidden" ? SHELL_GEOMETRY[lastVisibleShell] : SHELL_GEOMETRY[next];
   const theme = lightColorScheme.matches ? "light" : "dark";
   const signature = `${next}:${geometry.width}x${geometry.height}:r${geometry.cornerRadius}:${settings.topMargin}:${theme}`;
   const syncNativeShell = async (): Promise<void> => {
@@ -672,7 +640,7 @@ async function setShell(
     let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        await invoke("set_window_shell", {
+        await applyNativeShell({
           shell: next,
           width: geometry.width,
           height: geometry.height,
@@ -780,7 +748,7 @@ async function sendMediaCommand(command: MediaCommand): Promise<void> {
 
   let accepted = false;
   try {
-    accepted = await invoke<boolean>("media_command", { command, sessionRevision });
+    accepted = await runNativeMediaCommand(command, sessionRevision);
   } catch (error: unknown) {
     console.warn(`Media command '${command}' failed`, error);
   }
@@ -804,28 +772,6 @@ async function sendMediaCommand(command: MediaCommand): Promise<void> {
   render();
 }
 
-function mediaCommandEnabled(command: MediaCommand, current: MediaStatus): boolean {
-  if (command === "previous") return current.canPrevious;
-  if (command === "next") return current.canNext;
-  return current.canPlayPause;
-}
-
-function optimisticPlaybackToggle(current: MediaStatus): MediaStatus {
-  const now = Date.now();
-  return {
-    ...current,
-    playing: !current.playing,
-    positionMs: current.playing ? mediaPositionMs(current, now) : current.positionMs,
-    positionUpdatedAtMs: now,
-  };
-}
-
-function commandPendingMessage(command: MediaCommand, current: MediaStatus): string {
-  if (command === "previous") return "Going to previous track…";
-  if (command === "next") return "Going to next track…";
-  return current.playing ? "Pausing…" : "Playing…";
-}
-
 function setMediaCommandFeedback(
   feedback: string | null,
   failed = false,
@@ -843,10 +789,6 @@ function setMediaCommandFeedback(
       if (shell === "expanded" && expandedPanel === "media") render();
     }, clearAfterMs);
   }
-}
-
-function mediaIdentityFor(current: MediaStatus): string {
-  return `${current.sessionRevision}\u001f${current.source}\u001f${current.title}\u001f${current.artist}`;
 }
 
 function toggleSetting(settingName?: string): void {
@@ -872,409 +814,26 @@ function panelForContent(kind: ContentKind): ExpandedPanel {
 }
 
 function render(): void {
-  const focusedAction = app
-    .querySelector<HTMLElement>("[data-action]:focus")
-    ?.dataset.action;
-  app.dataset.shell = shell;
-  app.dataset.content = content;
-  app.classList.toggle("motion-disabled", !settings.animationsEnabled || reducedMotion.matches);
-  const motionClass = animateNextShellContent ? " shell-entering" : "";
+  const now = Date.now();
+  const vm: AppViewModel = {
+    shell,
+    content,
+    expandedPanel,
+    media,
+    mediaConnection,
+    volume,
+    timer,
+    settings,
+    pendingMediaCommand,
+    mediaCommandFeedback,
+    showInlineVolume: now < volumeVisibleUntil,
+    animateContent: animateNextShellContent,
+    motionDisabled: !settings.animationsEnabled || reducedMotion.matches,
+    now,
+  };
   animateNextShellContent = false;
-
-  if (shell === "hidden") {
-    app.innerHTML = "";
-    scheduleMediaProgressTick();
-    return;
-  }
-  if (shell === "reef") {
-    app.innerHTML = `
-      <button class="atoll-shell reef" ${shellGeometryStyle("reef")} type="button" aria-label="Open Atoll">
-        <span class="reef__tide"></span>
-      </button>`;
-    scheduleMediaProgressTick();
-    return;
-  }
-  if (shell === "compact") {
-    app.innerHTML =
-      content === "media" && media
-        ? renderCompactMedia(motionClass)
-        : `
-          <button class="atoll-shell compact compact--${content}${motionClass}" ${shellGeometryStyle("compact")} type="button" aria-label="${escapeHtml(compactAccessibleLabel())}">
-            ${renderCompact()}
-          </button>`;
-    restoreFocusedAction(focusedAction);
-    scheduleMediaProgressTick();
-    return;
-  }
-  app.innerHTML = `
-    <section class="atoll-shell expanded expanded--${expandedPanel}${motionClass}" ${shellGeometryStyle("expanded")} aria-label="Atoll quick controls">
-      ${renderExpanded()}
-    </section>`;
-  restoreFocusedAction(focusedAction);
+  renderApp(app, vm);
   scheduleMediaProgressTick();
-}
-
-function restoreFocusedAction(action?: string): void {
-  if (!action) return;
-  const target = Array.from(app.querySelectorAll<HTMLElement>("[data-action]")).find(
-    (element) => element.dataset.action === action && !element.hasAttribute("disabled"),
-  );
-  target?.focus({ preventScroll: true });
-}
-
-function renderCompactMedia(motionClass: string): string {
-  if (!media) return "";
-  const current = media;
-  const commandPending = pendingMediaCommand !== null;
-  const toggleLabel = current.playing ? "Pause" : "Play";
-  return `
-    <div class="atoll-shell compact compact--media${motionClass}" ${shellGeometryStyle("compact")} role="group" aria-label="Current media controls">
-      <button class="compact-media__open" type="button" data-action="open-media" aria-label="Open media controls for ${escapeHtml(current.title)}">
-        ${renderCover(current, "cover cover--compact")}
-        <span class="compact__copy" title="${escapeAttribute(`${current.title} — ${current.artist}`)}">
-          <strong>${escapeHtml(current.title)}</strong>
-          <small>${escapeHtml(current.artist)}</small>
-        </span>
-      </button>
-      <button class="compact-media__toggle ${pendingMediaCommand === "toggle" ? "is-pending" : ""}" type="button" data-action="media-toggle" aria-label="${toggleLabel}" aria-pressed="${current.playing}" aria-busy="${pendingMediaCommand === "toggle"}" ${!current.canPlayPause ? "disabled" : ""} ${commandPending ? 'aria-disabled="true"' : ""}>
-        ${icon(current.playing ? "pause" : "play")}
-      </button>
-      <span class="sr-only" role="status" aria-live="polite">${escapeHtml(mediaCommandFeedback?.message ?? "")}</span>
-    </div>`;
-}
-
-function renderCompact(): string {
-  switch (content) {
-    case "welcome":
-      return `
-        <span class="mark mark--compact">${icon("atoll")}</span>
-        <span class="compact__copy">
-          <strong>Atoll is ready</strong>
-          <small>Click to surface controls</small>
-        </span>`;
-    case "media":
-      return `
-        ${renderCover(media, "cover cover--compact")}
-        <span class="compact__copy">
-          <strong>${escapeHtml(media?.title ?? "No media")}</strong>
-          <small>${escapeHtml(media?.artist ?? "Waiting for a session")}</small>
-        </span>
-        <span class="compact__status">${icon(media?.playing ? "pause" : "play")}</span>`;
-    case "volume": {
-      const percentage = Math.round(volume.level * 100);
-      return `
-        <span class="compact__glyph">${icon(volume.muted ? "volumeMute" : "volume")}</span>
-        <span class="volume__stack">
-          <span class="volume__label">${volume.muted ? "Muted" : "Volume"} <strong>${percentage}%</strong></span>
-          <span class="meter" role="meter" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${volume.muted ? `Muted, ${percentage} percent` : `${percentage} percent`}"><span style="transform:scaleX(${volume.level})"></span></span>
-        </span>`;
-    }
-    case "timer":
-      return `
-        <span class="compact__glyph compact__glyph--timer">${icon("timer")}</span>
-        <span class="compact__copy">
-          <strong>Focus</strong>
-          <small>${timer.phase === "paused" ? "Paused" : "In progress"}</small>
-        </span>
-        <time class="compact__time">${formatDuration(remainingMs(timer))}</time>`;
-    case "timer-finished":
-      return `
-        <span class="compact__glyph compact__glyph--finished">${icon("timer")}</span>
-        <span class="compact__copy">
-          <strong>Time’s up</strong>
-          <small>Focus session complete</small>
-        </span>
-        <span class="compact__status compact__status--finished">${icon("check")}</span>`;
-    default:
-      return `
-        <span class="mark mark--compact">${icon("atoll")}</span>
-        <span class="compact__copy"><strong>Atoll</strong><small>Your status, surfaced.</small></span>`;
-  }
-}
-
-function renderExpanded(): string {
-  switch (expandedPanel) {
-    case "media":
-      return renderMediaPanel();
-    case "timer":
-      return renderTimerPanel();
-    case "timer-finished":
-      return renderTimerFinishedPanel();
-    case "settings":
-      return renderSettingsPanel();
-    default:
-      return renderHomePanel();
-  }
-}
-
-function renderHomePanel(): string {
-  const emptyMedia = mediaEmptyCopy();
-  return `
-    <header class="expanded__header">
-      <button class="brand-lockup" type="button" data-action="collapse" aria-label="Collapse Atoll">
-        <span class="mark">${icon("atoll")}</span>
-        <span><strong>Atoll</strong><small>${homeStatusLine()}</small></span>
-      </button>
-      ${renderInlineVolume()}
-      <button class="icon-button" type="button" data-action="open-settings" aria-label="Open settings">${icon("gear")}</button>
-    </header>
-    <div class="home__media ${media ? "" : "is-empty"}">
-      ${renderCover(media, "cover cover--home")}
-      <button class="media-summary" type="button" data-action="open-media" ${media ? "" : "disabled"}>
-        <strong>${escapeHtml(media?.title ?? emptyMedia.title)}</strong>
-        <small>${escapeHtml(media?.artist ?? emptyMedia.detail)}</small>
-      </button>
-      ${
-        media
-          ? `<button class="icon-button icon-button--accent" type="button" data-action="media-toggle" aria-label="${media.playing ? "Pause" : "Play"}" ${media.canPlayPause ? "" : "disabled"} ${pendingMediaCommand !== null ? 'aria-disabled="true"' : ""}>${icon(media.playing ? "pause" : "play")}</button>`
-          : ""
-      }
-    </div>
-    <div class="home__timer">
-      <span class="section-label">${icon("timer")}<span>Start a focus timer</span></span>
-      <div class="timer-presets" role="group" aria-label="Timer presets">
-        ${timerPresetButton(5)}
-        ${timerPresetButton(10)}
-        ${timerPresetButton(25)}
-      </div>
-    </div>
-    <footer class="expanded__footer">
-      <span>Ctrl + Shift + Space</span>
-      <button class="text-button" type="button" data-action="hide">${icon("hide")}Hide</button>
-    </footer>`;
-}
-
-function renderMediaPanel(): string {
-  if (!media) return renderMediaEmptyPanel();
-  const current = media;
-  const sourceDetail =
-    mediaConnection.sessionCount > 1
-      ? `${current.source} · ${mediaConnection.sessionCount} players`
-      : current.source;
-  const hasProgress =
-    current.positionMs !== undefined &&
-    current.durationMs !== undefined &&
-    current.durationMs > 0;
-  const commandPending = pendingMediaCommand !== null;
-  const sourceCopy = mediaCommandFeedback?.message ?? sourceDetail;
-  const footerContent =
-    !mediaCommandFeedback && Date.now() < volumeVisibleUntil
-      ? renderInlineVolume()
-      : `<span class="source-label ${mediaCommandFeedback?.failed ? "source-label--feedback" : ""}" aria-live="${mediaCommandFeedback ? "polite" : "off"}"><span class="source-label__dot" aria-hidden="true"></span><span>${escapeHtml(sourceCopy)}</span></span>`;
-  return `
-    <header class="expanded__header expanded__header--media">
-      ${renderCover(current, "cover cover--expanded")}
-      <button class="media-title" type="button" data-action="collapse" aria-label="Collapse Atoll" title="${escapeAttribute(`${current.title} — ${current.artist}`)}">
-        <strong>${escapeHtml(current.title)}</strong>
-        <small>${escapeHtml(current.artist)}</small>
-      </button>
-      <button class="icon-button" type="button" data-action="open-settings" aria-label="Open settings">${icon("gear")}</button>
-    </header>
-    <div class="media-playback ${hasProgress ? "" : "media-playback--without-progress"}">
-      ${renderMediaProgress(current)}
-      <div class="media-controls" role="group" aria-label="Media controls" aria-busy="${commandPending}">
-        ${mediaButton("media-previous", "previous", "Previous", current.canPrevious, false, commandPending)}
-        ${mediaButton("media-toggle", current.playing ? "pause" : "play", current.playing ? "Pause" : "Play", current.canPlayPause, true, commandPending, pendingMediaCommand === "toggle")}
-        ${mediaButton("media-next", "next", "Next", current.canNext, false, commandPending)}
-      </div>
-    </div>
-    <footer class="expanded__footer">
-      ${footerContent}
-    </footer>`;
-}
-
-function renderMediaEmptyPanel(): string {
-  const empty = mediaEmptyCopy();
-  return `
-    <header class="expanded__header">
-      <button class="brand-lockup" type="button" data-action="collapse" aria-label="Collapse Atoll">
-        <span class="mark">${icon("media")}</span>
-        <span><strong>Atoll Connect</strong><small>Windows media</small></span>
-      </button>
-      <button class="icon-button" type="button" data-action="open-settings" aria-label="Open settings">${icon("gear")}</button>
-    </header>
-    <div class="connect-empty" role="status">
-      <strong>${escapeHtml(empty.title)}</strong>
-      <small>${escapeHtml(empty.detail)}</small>
-    </div>
-    <footer class="expanded__footer">
-      <span>${mediaConnection.sessionCount > 0 ? `${mediaConnection.sessionCount} player connected` : "QQ Music · Spotify · browsers"}</span>
-      <button class="text-button" type="button" data-action="open-home">${icon("back")}Home</button>
-    </footer>`;
-}
-
-function renderTimerPanel(): string {
-  const time = formatDuration(remainingMs(timer));
-  return `
-    <header class="timer-hero">
-      <button class="mark mark--button" type="button" data-action="collapse" aria-label="Collapse Atoll">${icon("timer")}</button>
-      <span class="timer-hero__copy"><small>${timer.phase === "paused" ? "Focus paused" : "Focus timer"}</small><time>${time}</time></span>
-      <span class="timer-hero__status">${timer.phase === "paused" ? "Paused" : "Running"}</span>
-    </header>
-    <div class="timer-actions">
-      <button class="control-button control-button--primary" type="button" data-action="toggle-timer">
-        ${icon(timer.phase === "running" ? "pause" : "play")}
-        ${timer.phase === "running" ? "Pause" : "Continue"}
-      </button>
-      <button class="control-button" type="button" data-action="restart-timer">${icon("restart")}Restart</button>
-      <button class="control-button" type="button" data-action="cancel-timer">${icon("close")}Cancel</button>
-    </div>
-    <footer class="expanded__footer">
-      <span>Ends from real elapsed time</span>
-      <button class="text-button" type="button" data-action="open-home">${icon("back")}Home</button>
-    </footer>`;
-}
-
-function renderTimerFinishedPanel(): string {
-  return `
-    <header class="timer-finished__hero">
-      <span class="finished-mark">${icon("timer")}</span>
-      <span><small>Focus timer</small><strong>Time’s up</strong></span>
-      <span class="finished-check">${icon("check")}</span>
-    </header>
-    <p class="timer-finished__message">Your session is complete. Take a breath before the next one.</p>
-    <div class="timer-actions timer-actions--finished">
-      <button class="control-button control-button--primary" type="button" data-action="dismiss-finished">${icon("check")}Stop</button>
-      <button class="control-button" type="button" data-action="restart-timer">${icon("restart")}Restart</button>
-    </div>`;
-}
-
-function renderSettingsPanel(): string {
-  return `
-    <header class="expanded__header settings__header">
-      <button class="icon-button" type="button" data-action="open-home" aria-label="Back to Atoll home">${icon("back")}</button>
-      <span class="settings__title"><strong>Settings</strong><small>Changes apply immediately</small></span>
-      <button class="text-button" type="button" data-action="reset-settings">Reset</button>
-    </header>
-    <div class="settings__rows">
-      ${settingToggle("Motion", "Smooth state changes", "animationsEnabled", settings.animationsEnabled)}
-      ${settingToggle("Full screen", "Hide Atoll automatically", "hideInFullscreen", settings.hideInFullscreen)}
-      <div class="setting-row">
-        <span><strong>Idle</strong><small>When nothing needs attention</small></span>
-        <div class="segmented" role="group" aria-label="Idle behavior">
-          <button type="button" data-action="set-idle" data-value="reef" class="${settings.idleMode === "reef" ? "is-active" : ""}" aria-pressed="${settings.idleMode === "reef"}">Reef</button>
-          <button type="button" data-action="set-idle" data-value="hidden" class="${settings.idleMode === "hidden" ? "is-active" : ""}" aria-pressed="${settings.idleMode === "hidden"}">Hidden</button>
-        </div>
-      </div>
-    </div>`;
-}
-
-function settingToggle(
-  title: string,
-  detail: string,
-  settingName: keyof AtollSettings,
-  checked: boolean,
-): string {
-  return `
-    <button class="setting-row" type="button" role="switch" aria-checked="${checked}" data-action="toggle-setting" data-value="${settingName}">
-      <span><strong>${title}</strong><small>${detail}</small></span>
-      <span class="switch ${checked ? "is-on" : ""}" aria-hidden="true"><span></span></span>
-    </button>`;
-}
-
-function mediaButton(
-  action: string,
-  iconName: "previous" | "play" | "pause" | "next",
-  label: string,
-  enabled: boolean,
-  primary = false,
-  commandPending = false,
-  isPending = false,
-): string {
-  return `
-    <button class="media-button ${primary ? "media-button--primary" : ""} ${isPending ? "is-pending" : ""}" type="button" data-action="${action}" aria-label="${isPending ? `${label}, working` : label}" aria-busy="${isPending}" ${enabled ? "" : "disabled"} ${commandPending ? 'aria-disabled="true"' : ""}>
-      ${icon(iconName)}
-    </button>`;
-}
-
-function renderMediaProgress(current: MediaStatus): string {
-  if (current.positionMs === undefined || current.durationMs === undefined || current.durationMs <= 0) {
-    return "";
-  }
-  const position = mediaPositionMs(current);
-  const ratio = Math.min(1, Math.max(0, position / current.durationMs));
-  const elapsedSeconds = Math.floor(position / 1000);
-  const durationSeconds = Math.floor(current.durationMs / 1000);
-  return `
-    <div class="media-progress">
-      <span class="media-progress__track" role="progressbar" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="${durationSeconds}" aria-valuenow="${elapsedSeconds}" aria-valuetext="${formatPlaybackTime(position)} of ${formatPlaybackTime(current.durationMs)}">
-        <span class="media-progress__fill" data-media-progress style="transform:scaleX(${ratio})"></span>
-      </span>
-      <span class="media-progress__time" aria-hidden="true"><span data-media-elapsed>${formatPlaybackTime(position)}</span><span>${formatPlaybackTime(current.durationMs)}</span></span>
-    </div>`;
-}
-
-function timerPresetButton(minutes: number): string {
-  return `<button type="button" data-action="start-timer" data-value="${minutes}">${minutes} min</button>`;
-}
-
-function renderCover(current: MediaStatus | null, className: string): string {
-  const artwork = current?.artworkDataUrl;
-  if (artwork?.startsWith("data:image/")) {
-    return `<span class="${className} cover--image" style="background-image:url('${escapeAttribute(artwork)}')" role="img" aria-label="Album artwork for ${escapeHtml(current?.title ?? "current media")}"></span>`;
-  }
-  return `<span class="${className} cover--brand" aria-hidden="true">${icon("atoll")}</span>`;
-}
-
-function renderInlineVolume(): string {
-  if (Date.now() >= volumeVisibleUntil) return "";
-  const percentage = Math.round(volume.level * 100);
-  return `<span class="inline-volume" role="meter" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${volume.muted ? `Muted, ${percentage} percent` : `${percentage} percent`}">${icon(volume.muted ? "volumeMute" : "volume")}<span class="inline-volume__track" aria-hidden="true"><span style="transform:scaleX(${volume.level})"></span></span><b>${percentage}</b></span>`;
-}
-
-function compactAccessibleLabel(): string {
-  const expand = "Expand Atoll";
-  switch (content) {
-    case "welcome":
-      return `Atoll is ready. ${expand}`;
-    case "media": {
-      const title = media?.title ?? "No active media";
-      const artist = media?.artist ? ` by ${media.artist}` : "";
-      const playback = media ? (media.playing ? "playing" : "paused") : "waiting for a session";
-      return `${title}${artist}, ${playback}. ${expand}`;
-    }
-    case "volume": {
-      const percentage = Math.round(volume.level * 100);
-      return `${volume.muted ? "Muted" : `Volume ${percentage} percent`}. ${expand}`;
-    }
-    case "timer":
-      return `Focus timer, ${formatDuration(remainingMs(timer))} remaining, ${timer.phase === "paused" ? "paused" : "running"}. ${expand}`;
-    case "timer-finished":
-      return `Focus timer complete. ${expand}`;
-    default:
-      return `Atoll. ${expand}`;
-  }
-}
-
-function homeStatusLine(): string {
-  if (timer.phase === "running") return `${formatDuration(remainingMs(timer))} remaining`;
-  if (media?.playing) return "Media is playing";
-  return "Your status, surfaced.";
-}
-
-function mediaEmptyCopy(): { title: string; detail: string } {
-  switch (mediaConnection.status) {
-    case "checking":
-      return {
-        title: "Checking Windows media…",
-        detail: "Looking for connected players",
-      };
-    case "metadata_unavailable":
-      return {
-        title: "Player connected",
-        detail: "It isn’t sharing track details with Windows",
-      };
-    case "unavailable":
-      return {
-        title: "Media controls unavailable",
-        detail: "Atoll couldn’t reach Windows media sessions",
-      };
-    default:
-      return {
-        title: "No active media",
-        detail: "Start playback in QQ Music or another player",
-      };
-  }
 }
 
 function playTimerTone(): void {
@@ -1302,11 +861,7 @@ function playTimerTone(): void {
 }
 
 function persistTimer(): void {
-  try {
-    localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify(timer));
-  } catch {
-    // A storage failure must not stop an active timer.
-  }
+  saveTimer(timer);
   syncNativeTimer();
 }
 
@@ -1314,45 +869,7 @@ function syncNativeTimer(): void {
   if (!nativeRuntime || previewMode) return;
   const endAtMs =
     timer.phase === "running" && timer.endAt !== null ? Math.ceil(timer.endAt) : null;
-  void invoke("schedule_timer", {
-    endAtMs,
-    breakFullscreen: settings.timerBreaksFullscreen,
-  }).catch((error: unknown) => console.warn("Unable to schedule the native timer", error));
-}
-
-function loadTimer(): TimerStatus {
-  try {
-    const raw = localStorage.getItem(TIMER_STORAGE_KEY);
-    if (!raw) return { ...EMPTY_TIMER };
-    const parsed = JSON.parse(raw) as Partial<TimerStatus>;
-    if (!["idle", "running", "paused", "finished"].includes(parsed.phase ?? "")) {
-      return { ...EMPTY_TIMER };
-    }
-    return reconcileTimer({
-      phase: parsed.phase as TimerStatus["phase"],
-      durationMs: validNumber(parsed.durationMs),
-      endAt: parsed.endAt === null ? null : validNumber(parsed.endAt),
-      pausedRemainingMs:
-        parsed.pausedRemainingMs === null ? null : validNumber(parsed.pausedRemainingMs),
-    });
-  } catch {
-    return { ...EMPTY_TIMER };
-  }
-}
-
-function validNumber(value: number | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function escapeAttribute(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+  void scheduleNativeTimer(endAtMs, settings.timerBreaksFullscreen).catch((error: unknown) =>
+    console.warn("Unable to schedule the native timer", error),
+  );
 }

@@ -5,9 +5,7 @@ use std::{
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::{
-    is_current_timer, is_fullscreen, next_timer_epoch, RuntimeState,
-};
+use crate::runtime::{is_current_timer, is_fullscreen, next_timer_epoch, RuntimeState};
 
 #[tauri::command]
 pub fn schedule_timer(

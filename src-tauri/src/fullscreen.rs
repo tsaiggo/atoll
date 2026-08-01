@@ -4,14 +4,14 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use windows::Win32::{
     Foundation::{HWND, RECT},
-    Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    },
+    Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     UI::WindowsAndMessaging::{
         GetClassNameW, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId,
         IsWindowVisible,
     },
 };
+
+use crate::runtime::{set_fullscreen, RuntimeState};
 
 #[derive(Clone, Serialize)]
 struct FullscreenPayload {
@@ -23,7 +23,7 @@ pub fn start_watcher(app: AppHandle) {
         let mut previous = false;
         loop {
             let fullscreen = is_foreground_fullscreen();
-            crate::set_fullscreen(&app.state::<crate::RuntimeState>(), fullscreen);
+            set_fullscreen(&app.state::<RuntimeState>(), fullscreen);
             if fullscreen != previous {
                 previous = fullscreen;
                 let _ = app.emit("fullscreen-changed", FullscreenPayload { fullscreen });
@@ -31,6 +31,11 @@ pub fn start_watcher(app: AppHandle) {
             thread::sleep(Duration::from_millis(750));
         }
     });
+}
+
+#[tauri::command]
+pub(crate) fn is_fullscreen_active() -> bool {
+    is_foreground_fullscreen()
 }
 
 pub(crate) fn is_foreground_fullscreen() -> bool {
@@ -50,10 +55,7 @@ pub(crate) fn is_foreground_fullscreen() -> bool {
         let class_length = GetClassNameW(window, &mut class_name);
         if class_length > 0 {
             let class = String::from_utf16_lossy(&class_name[..class_length as usize]);
-            if matches!(
-                class.as_str(),
-                "Progman" | "WorkerW" | "Shell_TrayWnd"
-            ) {
+            if matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd") {
                 return false;
             }
         }
