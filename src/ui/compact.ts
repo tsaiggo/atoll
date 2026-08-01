@@ -1,4 +1,5 @@
 import type { AppViewModel } from "../app/types";
+import type { CarouselCardKind } from "../features/surface/carousel";
 import { formatDuration, remainingMs } from "../domain";
 import { icon } from "../icons";
 import { shellGeometryStyle } from "../shell/geometry";
@@ -6,23 +7,35 @@ import { escapeHtml } from "./escape";
 import { compactAccessibleLabel, renderCover } from "./primitives";
 
 export function renderCompactShell(vm: AppViewModel): string {
-  const motionClass = vm.animateContent ? " shell-entering" : "";
+  const carousel = compactCarouselPresentation(vm);
+  const motionClass = [
+    vm.animateContent ? "shell-entering" : "",
+    vm.carouselMotion ? `carousel-${vm.carouselMotion}` : "",
+  ]
+    .filter(Boolean)
+    .map((className) => ` ${className}`)
+    .join("");
   if (vm.content === "media" && vm.media) {
-    return renderCompactMedia(vm, motionClass);
+    return renderCompactMedia(vm, motionClass, carousel);
   }
   return `
-    <button class="atoll-shell compact compact--${vm.content}${motionClass}" ${shellGeometryStyle("compact")} type="button" aria-label="${escapeHtml(compactAccessibleLabel(vm))}">
+    <button class="atoll-shell compact compact--${vm.content}${carousel.className}${motionClass}" ${shellGeometryStyle("compact")} ${carousel.attribute} ${vm.content === "timer" ? `data-timer-aria-suffix="${escapeHtml(carousel.labelSuffix)}"` : ""} type="button" aria-label="${escapeHtml(`${compactAccessibleLabel(vm)}${carousel.labelSuffix}`)}">
       ${renderCompactContent(vm)}
+      ${carousel.indicator}
     </button>`;
 }
 
-function renderCompactMedia(vm: AppViewModel, motionClass: string): string {
+function renderCompactMedia(
+  vm: AppViewModel,
+  motionClass: string,
+  carousel: CompactCarouselPresentation,
+): string {
   if (!vm.media) return "";
   const current = vm.media;
   const commandPending = vm.pendingMediaCommand !== null;
   const toggleLabel = current.playing ? "Pause" : "Play";
   return `
-    <div class="atoll-shell compact compact--media${motionClass}" ${shellGeometryStyle("compact")} role="group" aria-label="Current media controls">
+    <div class="atoll-shell compact compact--media${carousel.className}${motionClass}" ${shellGeometryStyle("compact")} ${carousel.attribute} role="group" aria-label="Current media controls${escapeHtml(carousel.labelSuffix)}">
       <button class="compact-media__open" type="button" data-action="open-media" aria-label="Open media controls for ${escapeHtml(current.title)}">
         ${renderCover(current, "cover cover--compact")}
         <span class="compact__copy" title="${escapeHtml(`${current.title} — ${current.artist}`)}">
@@ -34,7 +47,41 @@ function renderCompactMedia(vm: AppViewModel, motionClass: string): string {
         ${icon(current.playing ? "pause" : "play")}
       </button>
       <span class="sr-only" role="status" aria-live="polite">${escapeHtml(vm.mediaCommandFeedback?.message ?? "")}</span>
+      ${carousel.indicator}
     </div>`;
+}
+
+interface CompactCarouselPresentation {
+  className: string;
+  attribute: string;
+  labelSuffix: string;
+  indicator: string;
+}
+
+function compactCarouselPresentation(vm: AppViewModel): CompactCarouselPresentation {
+  const card = carouselCardForContent(vm.content);
+  const index = card ? vm.carouselCards.indexOf(card) : -1;
+  if (vm.carouselCards.length < 2 || index < 0) {
+    return { className: "", attribute: "", labelSuffix: "", indicator: "" };
+  }
+
+  const position = index + 1;
+  const indicator = vm.carouselCards
+    .map(
+      (candidate) =>
+        `<span class="compact-carousel__dot${candidate === card ? " is-active" : ""}"></span>`,
+    )
+    .join("");
+  return {
+    className: " has-carousel",
+    attribute: 'data-carousel="true"',
+    labelSuffix: `. Card ${position} of ${vm.carouselCards.length}. Use the mouse wheel or arrow keys to switch`,
+    indicator: `<span class="compact-carousel__position" aria-hidden="true">${indicator}</span>`,
+  };
+}
+
+function carouselCardForContent(content: AppViewModel["content"]): CarouselCardKind | null {
+  return content === "media" || content === "timer" ? content : null;
 }
 
 function renderCompactContent(vm: AppViewModel): string {
@@ -70,7 +117,7 @@ function renderCompactContent(vm: AppViewModel): string {
           <strong>Focus</strong>
           <small>${vm.timer.phase === "paused" ? "Paused" : "In progress"}</small>
         </span>
-        <time class="compact__time">${formatDuration(remainingMs(vm.timer, vm.now))}</time>`;
+        <time class="compact__time" data-timer-remaining>${formatDuration(remainingMs(vm.timer, vm.now))}</time>`;
     case "timer-finished":
       return `
         <span class="compact__glyph compact__glyph--finished">${icon("timer")}</span>

@@ -16,6 +16,7 @@ domain.ts               纯领域模型、数据规范化和时间计算
 config.ts               全局设置及其 localStorage 持久化
 features/
   media/commands.ts     媒体命令规则、乐观播放状态与媒体身份
+  surface/carousel.ts   Compact 卡片列表、选择校正与循环切换规则
   timer/storage.ts      计时器 localStorage 读写和损坏数据回退
 platform/native.ts      唯一的 Tauri invoke/listen 封装
 shell/geometry.ts       Reef、Compact、Expanded 的窗口几何常量
@@ -39,13 +40,36 @@ lib.rs           Tauri 组合根：注册插件、状态、watcher 和 commands
 app_controls.rs  托盘、快捷键、菜单及应用级 action
 runtime.rs       跨原生模块共享的并发状态、epoch 和窗口参数
 shell.rs         原生窗口定位、动画、DPI、圆角区域和显示器变化
-media.rs         Windows Global System Media Transport Controls
+connect/
+  mod.rs         Atoll Connect 组合根与稳定的媒体 IPC commands
+  contract.rs    公开媒体 DTO、内部 Provider 状态与强类型 action
+  provider.rs    ConnectProvider、事件出口与请求邮箱
+  hub.rs         多 Provider 选择、全局 revision 与命令路由
+  publisher.rs   状态缓存、去重与 media-update 事件发布
+  runtime.rs     Tauri managed state 与同步命令入口
+  providers/
+    windows_gsmtc.rs  内置 Windows GSMTC Provider
 volume.rs        Windows Core Audio 音量监听
 fullscreen.rs    前台全屏窗口检测
 timer.rs         不依赖 WebView 活跃状态的后台计时调度
 ```
 
 Rust 模块应通过 `runtime.rs` 共享状态，不应反向依赖 `lib.rs` 中的实现细节。`lib.rs` 只负责装配。
+
+Atoll Connect 内部依赖方向为：
+
+```text
+connect::mod
+  -> hub / providers / publisher / runtime
+hub
+  -> provider / contract
+providers
+  -> provider / contract / 平台 API
+publisher / runtime
+  -> contract / Tauri
+```
+
+Provider 只观察一个来源、发布结构化状态并执行强类型 action。它不能直接访问 Tauri managed state、发送 `media-update` 或决定公开的 `session_revision`。Connect Hub 是唯一的来源选择与命令路由者；Publisher 是唯一的前端媒体事件发布者。
 
 ## 依赖规则
 
@@ -110,6 +134,7 @@ Tauri 调用参数在 TypeScript 中使用 camelCase，例如 `sessionRevision`�
 - 新的 Tauri command/event 调用：先加入 `platform/native.ts`，再由 `main.ts` 或功能协调器使用。
 - 新的窗口形态或尺寸：`src/shell/`，并同步原生窗口与 CSS 约定。
 - 新的 Windows 系统能力：`src-tauri/src/<feature>.rs`；在 `lib.rs` 注册，在 `platform/native.ts` 暴露最小接口。
+- 新的媒体来源：`src-tauri/src/connect/providers/<provider>.rs`；实现 `ConnectProvider` 并在 `providers/mod.rs` 显式注册。兼容 GSMTC 的播放器应复用现有 Windows Provider。
 - 托盘、快捷键和应用菜单：`src-tauri/src/app_controls.rs`。
 - 跨原生模块的并发状态：`src-tauri/src/runtime.rs`。
 

@@ -43,7 +43,7 @@ function renderHomePanel(vm: AppViewModel): string {
     <header class="expanded__header">
       <button class="brand-lockup" type="button" data-action="collapse" aria-label="Collapse Atoll">
         <span class="mark">${icon("atoll")}</span>
-        <span><strong>Atoll</strong><small>${homeStatusLine(vm)}</small></span>
+        <span><strong>Atoll</strong><small${vm.timer.phase === "running" ? ' data-timer-remaining data-timer-remaining-suffix=" remaining"' : ""}>${homeStatusLine(vm)}</small></span>
       </button>
       ${renderInlineVolume(vm)}
       <button class="icon-button" type="button" data-action="open-settings" aria-label="Open settings">${icon("gear")}</button>
@@ -138,7 +138,7 @@ function renderTimerPanel(vm: AppViewModel): string {
   return `
     <header class="timer-hero">
       <button class="mark mark--button" type="button" data-action="collapse" aria-label="Collapse Atoll">${icon("timer")}</button>
-      <span class="timer-hero__copy"><small>${vm.timer.phase === "paused" ? "Focus paused" : "Focus timer"}</small><time>${time}</time></span>
+      <span class="timer-hero__copy"><small>${vm.timer.phase === "paused" ? "Focus paused" : "Focus timer"}</small><time data-timer-remaining>${time}</time></span>
       <span class="timer-hero__status">${vm.timer.phase === "paused" ? "Paused" : "Running"}</span>
     </header>
     <div class="timer-actions">

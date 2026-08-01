@@ -27,6 +27,14 @@ import {
   type MediaCommand,
   type MediaCommandFeedback,
 } from "./features/media/commands";
+import {
+  availableCarouselCards,
+  CAROUSEL_ADVANCE_MS,
+  reconcileCarouselCard,
+  stepCarouselCard,
+  type CarouselCardKind,
+  type CarouselDirection,
+} from "./features/surface/carousel";
 import { loadTimer, saveTimer } from "./features/timer/storage";
 import {
   applyNativeShell,
@@ -39,13 +47,16 @@ import {
   subscribeNativeEvents,
 } from "./platform/native";
 import { SHELL_GEOMETRY } from "./shell/geometry";
-import { renderApp, updateMediaProgress } from "./ui/render";
+import { renderApp, updateMediaProgress, updateTimerRemaining } from "./ui/render";
 import "./styles.css";
 
 interface NativeAcceptedShell {
   shell: ShellState;
   signature: string;
 }
+
+const CAROUSEL_WHEEL_THRESHOLD_PX = 28;
+const CAROUSEL_WHEEL_RESET_MS = 180;
 
 const appElement = document.querySelector<HTMLElement>("#app");
 if (!appElement) throw new Error("Atoll root element was not found.");
@@ -78,6 +89,14 @@ let timerTickId: number | null = null;
 let mediaProgressTickId: number | null = null;
 let volumeVisibleUntil = 0;
 let mediaFlashUntil = 0;
+let carouselActiveCard: CarouselCardKind | null = null;
+let carouselMotion: CarouselDirection | null = null;
+let carouselAdvanceId: number | null = null;
+let carouselPointerInside = false;
+let carouselFocusInside = false;
+let carouselWheelAccumulator = 0;
+let carouselWheelLocked = false;
+let carouselWheelUnlockId: number | null = null;
 let lastMediaIdentity = "";
 let pendingMediaCommand: MediaCommand | null = null;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
@@ -93,6 +112,7 @@ function isPreviewMode(value: string | null): value is PreviewMode {
   return (
     value === "reef" ||
     value === "compact-media" ||
+    value === "compact-carousel" ||
     value === "expanded-media" ||
     value === "timer-finished"
   );
@@ -105,8 +125,17 @@ app.addEventListener("pointermove", onExpandedActivity);
 app.addEventListener("pointerdown", onExpandedActivity);
 app.addEventListener("pointerleave", onExpandedActivity);
 app.addEventListener("pointercancel", onExpandedActivity);
+app.addEventListener("wheel", onCarouselWheel, { passive: false });
+app.addEventListener("pointerenter", onCarouselPointerEnter);
+app.addEventListener("pointerleave", onCarouselPointerLeave);
+app.addEventListener("pointercancel", onCarouselPointerLeave);
+app.addEventListener("focusin", onCarouselFocusIn);
+app.addEventListener("focusout", onCarouselFocusOut);
 window.addEventListener("keydown", onKeyDown);
-reducedMotion.addEventListener("change", () => render());
+reducedMotion.addEventListener("change", () => {
+  resetCarouselAutoRotation();
+  render();
+});
 lightColorScheme.addEventListener("change", () => {
   nativeAcceptedShell = null;
   if (nativeRuntime && shell !== "hidden") {
@@ -114,7 +143,9 @@ lightColorScheme.addEventListener("change", () => {
   }
 });
 document.addEventListener("visibilitychange", () => {
-  if (!previewMode && !document.hidden) {
+  if (document.hidden) {
+    clearCarouselAutoRotation();
+  } else if (!previewMode) {
     reconcilePresentation();
   }
   scheduleMediaProgressTick();
@@ -186,6 +217,17 @@ function configurePreview(mode: PreviewMode): void {
       content = "media";
       previewShell = "compact";
       break;
+    case "compact-carousel":
+      timer = {
+        phase: "running",
+        durationMs: 25 * 60_000,
+        endAt: Date.now() + 18 * 60_000 + 42_000,
+        pausedRemainingMs: 0,
+      };
+      carouselActiveCard = "media";
+      content = "media";
+      previewShell = "compact";
+      break;
     case "expanded-media":
       content = "media";
       expandedPanel = "media";
@@ -204,6 +246,7 @@ function configurePreview(mode: PreviewMode): void {
       break;
   }
   void setShell(previewShell, false, true);
+  scheduleTimerTick();
   scheduleMediaProgressTick();
 }
 
@@ -240,8 +283,102 @@ function onExpandedActivity(): void {
   resetExpandedExpiry();
 }
 
+function onCarouselWheel(event: WheelEvent): void {
+  if (shell !== "compact" || event.ctrlKey) return;
+  const target = event.target as HTMLElement;
+  if (!target.closest<HTMLElement>("[data-carousel='true']")) return;
+  const cards = getCarouselCards();
+  if (cards.length < 2) return;
+
+  const delta = normalizedWheelDelta(event);
+  if (delta === 0) return;
+  event.preventDefault();
+  scheduleCarouselWheelUnlock();
+  if (carouselWheelLocked) return;
+  if (
+    carouselWheelAccumulator !== 0 &&
+    Math.sign(delta) !== Math.sign(carouselWheelAccumulator)
+  ) {
+    carouselWheelAccumulator = 0;
+  }
+  carouselWheelAccumulator += delta;
+  if (Math.abs(carouselWheelAccumulator) < CAROUSEL_WHEEL_THRESHOLD_PX) return;
+
+  const direction: CarouselDirection = carouselWheelAccumulator > 0 ? "next" : "previous";
+  carouselWheelAccumulator = 0;
+  carouselWheelLocked = true;
+  switchCarousel(direction);
+}
+
+function scheduleCarouselWheelUnlock(): void {
+  if (carouselWheelUnlockId !== null) window.clearTimeout(carouselWheelUnlockId);
+  carouselWheelUnlockId = window.setTimeout(() => {
+    carouselWheelUnlockId = null;
+    carouselWheelAccumulator = 0;
+    carouselWheelLocked = false;
+  }, CAROUSEL_WHEEL_RESET_MS);
+}
+
+function resetCarouselWheelGesture(): void {
+  if (carouselWheelUnlockId !== null) window.clearTimeout(carouselWheelUnlockId);
+  carouselWheelUnlockId = null;
+  carouselWheelAccumulator = 0;
+  carouselWheelLocked = false;
+}
+
+function normalizedWheelDelta(event: WheelEvent): number {
+  const rawDelta =
+    Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return rawDelta * 16;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return rawDelta * SHELL_GEOMETRY.compact.height;
+  }
+  return rawDelta;
+}
+
+function onCarouselPointerEnter(): void {
+  carouselPointerInside = true;
+  clearCarouselAutoRotation();
+}
+
+function onCarouselPointerLeave(): void {
+  carouselPointerInside = false;
+  resetCarouselWheelGesture();
+  resetCarouselAutoRotation();
+}
+
+function onCarouselFocusIn(event: FocusEvent): void {
+  const target = event.target as HTMLElement;
+  if (!target.closest<HTMLElement>(".compact")) return;
+  carouselFocusInside = true;
+  clearCarouselAutoRotation();
+}
+
+function onCarouselFocusOut(): void {
+  queueMicrotask(() => {
+    const activeElement = document.activeElement;
+    carouselFocusInside =
+      activeElement instanceof Element && Boolean(activeElement.closest(".compact"));
+    if (!carouselFocusInside) resetCarouselAutoRotation();
+  });
+}
+
 function onKeyDown(event: KeyboardEvent): void {
   resetExpandedExpiry();
+  if (
+    shell === "compact" &&
+    (event.key === "ArrowDown" ||
+      event.key === "ArrowRight" ||
+      event.key === "ArrowUp" ||
+      event.key === "ArrowLeft")
+  ) {
+    const direction: CarouselDirection =
+      event.key === "ArrowDown" || event.key === "ArrowRight" ? "next" : "previous";
+    if (switchCarousel(direction)) {
+      event.preventDefault();
+      return;
+    }
+  }
   if (event.key === "Escape" && shell === "expanded") {
     event.preventDefault();
     collapse();
@@ -259,6 +396,8 @@ async function runAction(action: string, value?: string): Promise<void> {
       reconcilePresentation();
       break;
     case "open-media":
+      carouselActiveCard = "media";
+      content = "media";
       expandedPanel = "media";
       await setShell("expanded");
       break;
@@ -273,6 +412,7 @@ async function runAction(action: string, value?: string): Promise<void> {
     case "toggle-timer":
       timer = timer.phase === "running" ? pauseTimer(timer) : resumeTimer(timer);
       persistTimer();
+      carouselActiveCard = "timer";
       content = timer.phase === "finished" ? "timer-finished" : "timer";
       render();
       scheduleTimerTick();
@@ -287,6 +427,7 @@ async function runAction(action: string, value?: string): Promise<void> {
     case "restart-timer":
       timer = restartTimer(timer);
       persistTimer();
+      carouselActiveCard = "timer";
       content = "timer";
       expandedPanel = "timer";
       await setShell("expanded");
@@ -361,6 +502,7 @@ function applyExternalAction(action: string): void {
       timer = { ...EMPTY_TIMER };
       persistTimer();
       media = null;
+      carouselActiveCard = null;
       reconcilePresentation();
       break;
     case "demo:media":
@@ -446,13 +588,13 @@ function updateMedia(payload: NativeMediaPayload | null, fromDemo = false): void
   const trackChanged = Boolean(next && mediaIdentity !== lastMediaIdentity);
   media = next;
   lastMediaIdentity = mediaIdentity;
+  reconcileActiveCarouselCard();
   if (fromDemo) mediaConnection = { status: "ready", sessionCount: 1 };
   scheduleMediaProgressTick();
   if (next && trackChanged) {
     mediaFlashUntil = Date.now() + settings.compactTimeoutMs;
-    content = "media";
-    if (!manuallyHidden && shell !== "expanded") void setShell("compact");
-    setTransientExpiry(settings.compactTimeoutMs);
+    reconcilePresentation();
+    scheduleVisibleTransientExpiry();
   } else {
     reconcilePresentation();
   }
@@ -467,21 +609,17 @@ function updateVolume(payload: NativeVolumePayload): void {
   if (payload.initial) return;
   volumeVisibleUntil = Date.now() + 1800;
   if (manuallyHidden) return;
-  if (shell === "expanded") {
-    render();
-    setTransientExpiry(1800);
-    return;
-  }
-  content = "volume";
-  void setShell("compact");
-  setTransientExpiry(1800);
+  reconcilePresentation();
+  scheduleVisibleTransientExpiry();
 }
 
 function startTimer(minutes: number): void {
   if (!Number.isFinite(minutes) || minutes <= 0) return;
+  dismissCarouselTransients();
   demoOverride = demoOverride === "timer" ? demoOverride : null;
   timer = createTimer(minutes);
   persistTimer();
+  carouselActiveCard = "timer";
   content = "timer";
   expandedPanel = "timer";
   void setShell("expanded");
@@ -489,6 +627,9 @@ function startTimer(minutes: number): void {
 }
 
 function finishTimer(): void {
+  const preserveExpandedPanel =
+    shell === "expanded" && expandedPanel !== "timer" && expandedPanel !== "timer-finished";
+  dismissCarouselTransients();
   timer = {
     ...timer,
     phase: "finished",
@@ -497,8 +638,7 @@ function finishTimer(): void {
   };
   persistTimer();
   content = "timer-finished";
-  expandedPanel = "timer-finished";
-  clearTransientExpiry();
+  if (!preserveExpandedPanel) expandedPanel = "timer-finished";
   void setShell(
     manuallyHidden || shouldHideForFullscreen()
       ? "hidden"
@@ -523,7 +663,7 @@ function scheduleTimerTick(): void {
       finishTimer();
       return;
     }
-    if (shell !== "hidden") render();
+    if (shell !== "hidden") updateTimerRemaining(app, timer);
   }, 500);
 }
 
@@ -550,12 +690,109 @@ function refreshMediaProgress(): void {
   updateMediaProgress(app, media);
 }
 
+function getCarouselCards(): CarouselCardKind[] {
+  return availableCarouselCards(
+    media !== null,
+    timer.phase === "running" || timer.phase === "paused",
+  );
+}
+
+function reconcileActiveCarouselCard(
+  preferred: CarouselCardKind | null = null,
+): CarouselCardKind | null {
+  const cards = getCarouselCards();
+  const fallback =
+    preferred ??
+    (timer.phase === "running" || timer.phase === "paused" ? "timer" : null);
+  carouselActiveCard = reconcileCarouselCard(cards, carouselActiveCard, fallback);
+  return carouselActiveCard;
+}
+
+function switchCarousel(direction: CarouselDirection): boolean {
+  if (shell !== "compact") return false;
+  const cards = getCarouselCards();
+  if (
+    cards.length < 2 ||
+    (content !== "media" && content !== "timer") ||
+    !cards.includes(content)
+  ) {
+    return false;
+  }
+  const next = stepCarouselCard(cards, content, direction);
+  if (!next || next === content) return false;
+
+  dismissCarouselTransients();
+  carouselActiveCard = next;
+  carouselMotion = direction;
+  content = next;
+  clearCarouselAutoRotation();
+  render();
+  return true;
+}
+
+function dismissCarouselTransients(): void {
+  volumeVisibleUntil = 0;
+  mediaFlashUntil = 0;
+  firstRun = false;
+  if (demoOverride === "volume") demoOverride = null;
+  clearTransientExpiry();
+}
+
+function carouselCanAutoRotate(): boolean {
+  const cards = getCarouselCards();
+  const now = Date.now();
+  return (
+    shell === "compact" &&
+    cards.length > 1 &&
+    carouselActiveCard !== null &&
+    content === carouselActiveCard &&
+    now >= volumeVisibleUntil &&
+    now >= mediaFlashUntil &&
+    !firstRun &&
+    !carouselPointerInside &&
+    !carouselFocusInside &&
+    pendingMediaCommand === null &&
+    !document.hidden &&
+    previewMode === null &&
+    settings.animationsEnabled &&
+    !reducedMotion.matches
+  );
+}
+
+function syncCarouselAutoRotation(): void {
+  if (!carouselCanAutoRotate()) {
+    clearCarouselAutoRotation();
+    return;
+  }
+  if (carouselAdvanceId !== null) return;
+  carouselAdvanceId = window.setTimeout(() => {
+    carouselAdvanceId = null;
+    if (!carouselCanAutoRotate()) return;
+    switchCarousel("next");
+  }, CAROUSEL_ADVANCE_MS);
+}
+
+function resetCarouselAutoRotation(): void {
+  clearCarouselAutoRotation();
+  syncCarouselAutoRotation();
+}
+
+function clearCarouselAutoRotation(): void {
+  if (carouselAdvanceId === null) return;
+  window.clearTimeout(carouselAdvanceId);
+  carouselAdvanceId = null;
+}
+
 function reconcilePresentation(
   animate = settings.animationsEnabled && !reducedMotion.matches,
   preserveExpanded = true,
 ): void {
   timer = reconcileTimer(timer);
   if (manuallyHidden) {
+    void setShell("hidden", animate);
+    return;
+  }
+  if (shouldHideForFullscreen()) {
     void setShell("hidden", animate);
     return;
   }
@@ -566,22 +803,16 @@ function reconcilePresentation(
     return;
   }
 
-  if (shouldHideForFullscreen()) {
-    void setShell("hidden", animate);
-    return;
-  }
-
   const now = Date.now();
+  const activeCard = reconcileActiveCarouselCard();
   if (demoOverride === "idle") {
     content = "idle";
   } else if (now < volumeVisibleUntil) {
     content = "volume";
   } else if (now < mediaFlashUntil && media) {
     content = "media";
-  } else if (timer.phase === "running" || timer.phase === "paused") {
-    content = "timer";
-  } else if (media) {
-    content = "media";
+  } else if (activeCard) {
+    content = activeCard;
   } else if (firstRun) {
     content = "welcome";
   } else {
@@ -616,6 +847,7 @@ async function setShell(
   const previous = shell;
   const enteredExpanded = previous !== "expanded" && next === "expanded";
   if (next !== "expanded") clearExpandedExpiry();
+  if (next !== "compact") resetCarouselWheelGesture();
   if (previous !== next || forceNative) shellRevision += 1;
   const revision = shellRevision;
   animateNextShellContent = animated && previous !== next;
@@ -678,6 +910,7 @@ function setTransientExpiry(milliseconds: number): void {
     firstRun = false;
     demoOverride = demoOverride === "volume" ? null : demoOverride;
     reconcilePresentation();
+    scheduleVisibleTransientExpiry();
   }, milliseconds);
 }
 
@@ -685,6 +918,18 @@ function clearTransientExpiry(): void {
   if (transientExpiryId === null) return;
   window.clearTimeout(transientExpiryId);
   transientExpiryId = null;
+}
+
+function scheduleVisibleTransientExpiry(): void {
+  clearTransientExpiry();
+  const now = Date.now();
+  const deadline =
+    now < volumeVisibleUntil
+      ? volumeVisibleUntil
+      : now < mediaFlashUntil && media
+        ? mediaFlashUntil
+        : 0;
+  if (deadline > now) setTransientExpiry(deadline - now);
 }
 
 function setExpandedExpiry(): void {
@@ -815,6 +1060,7 @@ function panelForContent(kind: ContentKind): ExpandedPanel {
 
 function render(): void {
   const now = Date.now();
+  const carouselCards = getCarouselCards();
   const vm: AppViewModel = {
     shell,
     content,
@@ -826,6 +1072,9 @@ function render(): void {
     settings,
     pendingMediaCommand,
     mediaCommandFeedback,
+    carouselCards,
+    carouselActiveCard,
+    carouselMotion,
     showInlineVolume: now < volumeVisibleUntil,
     animateContent: animateNextShellContent,
     motionDisabled: !settings.animationsEnabled || reducedMotion.matches,
@@ -833,6 +1082,8 @@ function render(): void {
   };
   animateNextShellContent = false;
   renderApp(app, vm);
+  carouselMotion = null;
+  syncCarouselAutoRotation();
   scheduleMediaProgressTick();
 }
 

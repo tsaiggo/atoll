@@ -1,6 +1,6 @@
 mod app_controls;
+mod connect;
 mod fullscreen;
-mod media;
 mod runtime;
 mod shell;
 mod timer;
@@ -21,7 +21,7 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
-        .manage(media::MediaRuntime::default())
+        .manage(connect::ConnectRuntime::default())
         .manage(runtime::RuntimeState::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -30,7 +30,7 @@ pub fn run() {
             let quick_menu = app_controls::setup_tray(app)?;
             app.manage(quick_menu);
             app_controls::setup_shortcut(app)?;
-            media::start_watcher(app.handle().clone());
+            connect::start(app.handle().clone());
             volume::start_watcher(app.handle().clone());
             fullscreen::start_watcher(app.handle().clone());
             shell::start_display_watcher(app.handle().clone());
@@ -39,8 +39,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             shell::set_window_shell,
             app_controls::show_context_menu,
-            media::media_command,
-            media::media_status,
+            connect::media_command,
+            connect::media_status,
             fullscreen::is_fullscreen_active,
             timer::schedule_timer
         ])

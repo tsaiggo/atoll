@@ -221,6 +221,8 @@ Expanded uses three short rows—header, one task area, footer—with no more th
 
 The native host, not CSS media queries, owns display scaling and repositioning. Content must remain clipped and legible at 125%, 150%, and 200% scaling, including on displays with negative desktop coordinates.
 
+When more than one persistent status is active, Compact presents a stable card carousel rather than stacking content or resizing the shell. A two-mark pager sits on the lower centerline without changing the 188 × 44 DIP geometry. Automatic advancement uses a quiet six-second cadence and pauses while the pointer or keyboard focus is inside the shell; wheel and arrow-key input provide direct bidirectional control. Volume feedback and completed timers are overlays, not carousel pages.
+
 ## Elevation & Depth
 
 Atoll uses the official WinUI Acrylic fallback color as its native backing and the official Card fill as its content layer. Top-level Accent Acrylic is intentionally disabled because Windows paints that visual to the rectangular HWND instead of reliably honoring Atoll's asymmetric region. Nested surfaces are differentiated by subtle Fluent neutral fills. The exact-fit transparent host does not reserve an external shadow gutter, so the shell uses one inset Card contour and no hand-drawn halo.
@@ -280,6 +282,7 @@ The switch is a short dark track with a solid circular thumb. The on state uses 
 - **Do** update content in-place when the shell size does not change.
 - **Do** follow the live Windows app theme without changing window geometry, focus, or current state.
 - **Do** preserve a clear icon, label, or shape cue in addition to semantic color.
+- **Do** keep Compact carousel transitions in-place, directional, and under 200 ms.
 
 ### Don't:
 
