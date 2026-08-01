@@ -2,16 +2,13 @@ use std::{
     cmp::Reverse,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender},
-        Arc, Mutex,
+        mpsc::{self, Receiver, RecvTimeoutError, Sender},
+        Arc,
     },
-    thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
 use windows::{
     Foundation::TypedEventHandler,
     Media::Control::{
@@ -25,73 +22,43 @@ use windows::{
 };
 use windows_future::{AsyncOperationCompletedHandler, AsyncStatus};
 
+use super::super::{
+    contract::{
+        MediaAction, MediaConnectState, MediaConnectStatus, MediaSnapshot, ProviderDescriptor,
+        ProviderRequest, ProviderState,
+    },
+    provider::{ConnectProvider, ProviderEventSink, ProviderMailbox},
+};
+
 const MEDIA_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(4);
-const COMMAND_REPLY_TIMEOUT: Duration = Duration::from_secs(5);
 const WINDOWS_TO_UNIX_EPOCH_TICKS: i64 = 116_444_736_000_000_000;
 const TICKS_PER_MILLISECOND: i64 = 10_000;
 const MAX_ARTWORK_BYTES: u64 = 1024 * 1024;
 const ARTWORK_READ_CHUNK_BYTES: usize = 64 * 1024;
 
-#[derive(Clone, Default)]
-pub struct MediaRuntime {
-    request_sender: Arc<Mutex<Option<Sender<MediaRequest>>>>,
-    latest_state: Arc<Mutex<MediaConnectState>>,
-}
+pub(super) const PROVIDER_ID: &str = "builtin.windows-media-session";
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MediaConnectStatus {
-    #[default]
-    Checking,
-    Ready,
-    NoSession,
-    MetadataUnavailable,
-    Unavailable,
-}
+pub(super) struct WindowsGsmtcProvider;
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-pub struct MediaConnectState {
-    status: MediaConnectStatus,
-    session_count: u32,
-    media: Option<MediaSnapshot>,
-}
+impl ConnectProvider for WindowsGsmtcProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor::new(PROVIDER_ID, 100)
+    }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct MediaSnapshot {
-    title: String,
-    artist: String,
-    source: String,
-    playing: bool,
-    can_previous: bool,
-    can_play_pause: bool,
-    can_next: bool,
-    can_seek: bool,
-    position_ms: Option<u64>,
-    duration_ms: Option<u64>,
-    position_updated_at_ms: Option<i64>,
-    session_revision: u64,
-    artwork_data_url: Option<String>,
-}
-
-enum MediaRequest {
-    Command {
-        command: String,
-        session_revision: u64,
-        deadline: Instant,
-        reply: SyncSender<Result<bool, String>>,
-    },
-    Refresh,
+    fn run(self: Box<Self>, events: ProviderEventSink, mailbox: ProviderMailbox) {
+        let notifier = RefreshNotifier::new(mailbox.sender);
+        run_worker(events, notifier, mailbox.receiver);
+    }
 }
 
 #[derive(Clone)]
 struct RefreshNotifier {
-    sender: Sender<MediaRequest>,
+    sender: Sender<ProviderRequest>,
     pending: Arc<AtomicBool>,
 }
 
 impl RefreshNotifier {
-    fn new(sender: Sender<MediaRequest>) -> Self {
+    fn new(sender: Sender<ProviderRequest>) -> Self {
         Self {
             sender,
             pending: Arc::new(AtomicBool::new(false)),
@@ -102,7 +69,7 @@ impl RefreshNotifier {
         if self.pending.swap(true, Ordering::AcqRel) {
             return;
         }
-        if self.sender.send(MediaRequest::Refresh).is_err() {
+        if self.sender.send(ProviderRequest::Refresh).is_err() {
             self.pending.store(false, Ordering::Release);
         }
     }
@@ -298,72 +265,17 @@ impl Drop for SessionSubscription {
     }
 }
 
-pub fn start_watcher(app: AppHandle) {
-    let (sender, receiver) = mpsc::channel();
-    if let Ok(mut request_sender) = app.state::<MediaRuntime>().request_sender.lock() {
-        *request_sender = Some(sender.clone());
-    }
-    let notifier = RefreshNotifier::new(sender);
-
-    thread::spawn(move || run_worker(app, notifier, receiver));
-}
-
-pub fn current_state(runtime: &MediaRuntime) -> MediaConnectState {
-    runtime
-        .latest_state
-        .lock()
-        .map(|state| state.clone())
-        .unwrap_or_default()
-}
-
-#[tauri::command]
-pub(crate) async fn media_command(
-    command: String,
-    session_revision: u64,
-    runtime: State<'_, MediaRuntime>,
-) -> Result<bool, String> {
-    let runtime = runtime.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || send_command(&runtime, &command, session_revision))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-pub(crate) fn media_status(runtime: State<'_, MediaRuntime>) -> MediaConnectState {
-    current_state(&runtime)
-}
-
-pub fn send_command(
-    runtime: &MediaRuntime,
-    command: &str,
-    session_revision: u64,
-) -> Result<bool, String> {
-    let sender = runtime
-        .request_sender
-        .lock()
-        .map_err(|_| "Media controls are unavailable".to_string())?
-        .clone()
-        .ok_or_else(|| "Windows media sessions are not ready".to_string())?;
-    let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
-    sender
-        .send(MediaRequest::Command {
-            command: command.to_string(),
-            session_revision,
-            deadline: Instant::now() + COMMAND_TIMEOUT,
-            reply: reply_sender,
-        })
-        .map_err(|_| "The media worker is unavailable".to_string())?;
-    reply_receiver
-        .recv_timeout(COMMAND_REPLY_TIMEOUT)
-        .map_err(|_| "The media player did not respond".to_string())?
-}
-
-fn run_worker(app: AppHandle, notifier: RefreshNotifier, receiver: Receiver<MediaRequest>) {
+fn run_worker(
+    events: ProviderEventSink,
+    notifier: RefreshNotifier,
+    receiver: Receiver<ProviderRequest>,
+) {
     let _winrt = WinRtApartment::initialize();
     let mut manager: Option<GlobalSystemMediaTransportControlsSessionManager> = None;
     let mut _manager_subscription: Option<ManagerSubscription> = None;
     let mut selected_session: Option<GlobalSystemMediaTransportControlsSession> = None;
     let mut selected_subscription: Option<SessionSubscription> = None;
+    let mut selected_target_id: Option<String> = None;
     let mut selected_revision = 0_u64;
     let mut last_snapshot: Option<MediaSnapshot> = None;
     let mut cache = ArtworkCache::default();
@@ -380,17 +292,25 @@ fn run_worker(app: AppHandle, notifier: RefreshNotifier, receiver: Receiver<Medi
                 }
                 Err(error) => {
                     log::warn!("Windows media sessions are temporarily unavailable: {error}");
+                    if selected_session.is_some() {
+                        selected_revision = advance_revision(selected_revision);
+                    }
                     selected_session = None;
                     selected_subscription = None;
+                    selected_target_id = None;
                     last_snapshot = None;
-                    publish_state(
-                        &app,
+                    if !publish_provider_state(
+                        &events,
                         MediaConnectState {
                             status: MediaConnectStatus::Unavailable,
                             session_count: 0,
                             media: None,
                         },
-                    );
+                        None,
+                        selected_revision,
+                    ) {
+                        break;
+                    }
                 }
             }
         }
@@ -411,7 +331,20 @@ fn run_worker(app: AppHandle, notifier: RefreshNotifier, receiver: Receiver<Medi
                     if selection_changed {
                         selected_revision = advance_revision(selected_revision);
                     }
+                    let next_target_id = next_session.as_ref().map(|next| {
+                        if selected_session
+                            .as_ref()
+                            .is_some_and(|previous| previous == next)
+                        {
+                            selected_target_id
+                                .clone()
+                                .unwrap_or_else(|| session_target_id(next))
+                        } else {
+                            session_target_id(next)
+                        }
+                    });
                     selected_session = next_session;
+                    selected_target_id = next_target_id;
                     if let Some(snapshot) = state.media.as_mut() {
                         snapshot.session_revision = selected_revision;
                     }
@@ -426,7 +359,14 @@ fn run_worker(app: AppHandle, notifier: RefreshNotifier, receiver: Receiver<Medi
                             .as_ref()
                             .map(|session| SessionSubscription::new(session, &notifier));
                     }
-                    publish_state(&app, state);
+                    if !publish_provider_state(
+                        &events,
+                        state,
+                        selected_target_id.clone(),
+                        selected_revision,
+                    ) {
+                        break;
+                    }
                 }
                 Err(error) => {
                     log::warn!("Windows media session manager needs to reconnect: {error}");
@@ -437,41 +377,72 @@ fn run_worker(app: AppHandle, notifier: RefreshNotifier, receiver: Receiver<Medi
                     }
                     selected_session = None;
                     selected_subscription = None;
+                    selected_target_id = None;
                     last_snapshot = None;
                     cache = ArtworkCache::default();
-                    publish_state(
-                        &app,
+                    if !publish_provider_state(
+                        &events,
                         MediaConnectState {
                             status: MediaConnectStatus::Unavailable,
                             session_count: 0,
                             media: None,
                         },
-                    );
+                        None,
+                        selected_revision,
+                    ) {
+                        break;
+                    }
                 }
             }
         }
 
         match receiver.recv_timeout(MEDIA_REFRESH_INTERVAL) {
-            Ok(MediaRequest::Command {
-                command,
-                session_revision,
+            Ok(ProviderRequest::Command {
+                action,
+                target_id,
+                generation,
                 deadline,
                 reply,
             }) => {
                 let result = if Instant::now() >= deadline {
                     Err("The media command expired before it could run".to_string())
-                } else if session_revision != selected_revision {
+                } else if generation != selected_revision
+                    || selected_target_id.as_deref() != Some(target_id.as_str())
+                {
                     Err("The selected media session changed".to_string())
                 } else {
-                    execute_command(selected_session.as_ref(), &command, deadline)
+                    execute_command(selected_session.as_ref(), action, deadline)
                 };
                 let _ = reply.send(result);
             }
-            Ok(MediaRequest::Refresh) => notifier.mark_handled(),
+            Ok(ProviderRequest::Refresh) => notifier.mark_handled(),
+            Ok(ProviderRequest::Shutdown) => break,
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
     }
+}
+
+fn session_target_id(session: &GlobalSystemMediaTransportControlsSession) -> String {
+    session
+        .SourceAppUserModelId()
+        .map(|source_id| source_id.to_string())
+        .unwrap_or_else(|_| PROVIDER_ID.to_string())
+}
+
+fn publish_provider_state(
+    events: &ProviderEventSink,
+    state: MediaConnectState,
+    target_id: Option<String>,
+    generation: u64,
+) -> bool {
+    events.publish(ProviderState {
+        status: state.status,
+        target_count: state.session_count,
+        target_id,
+        generation,
+        media: state.media,
+    })
 }
 
 fn capture_connect_state(
@@ -710,17 +681,17 @@ fn current_unix_time_ms() -> Option<i64> {
 
 fn execute_command(
     session: Option<&GlobalSystemMediaTransportControlsSession>,
-    command: &str,
+    action: MediaAction,
     deadline: Instant,
 ) -> Result<bool, String> {
     if Instant::now() >= deadline {
         return Err("The media command expired before it could run".to_string());
     }
     let session = session.ok_or_else(|| "There is no selected media session".to_string())?;
-    let operation = match command {
-        "previous" => session.TrySkipPreviousAsync(),
-        "next" => session.TrySkipNextAsync(),
-        "toggle" => {
+    let operation = match action {
+        MediaAction::Previous => session.TrySkipPreviousAsync(),
+        MediaAction::Next => session.TrySkipNextAsync(),
+        MediaAction::Toggle => {
             let playback = session
                 .GetPlaybackInfo()
                 .map_err(|error| error.to_string())?;
@@ -737,7 +708,6 @@ fn execute_command(
                 session.TryTogglePlayPauseAsync()
             }
         }
-        _ => return Err("Unsupported media command".to_string()),
     }
     .map_err(|error| error.to_string())?;
     let remaining = deadline.saturating_duration_since(Instant::now());
@@ -928,79 +898,6 @@ fn friendly_source(source_id: &str) -> String {
             .unwrap_or("Windows media")
             .trim_end_matches(".exe")
             .to_string()
-    }
-}
-
-fn publish_state(app: &AppHandle, state: MediaConnectState) {
-    let runtime = app.state::<MediaRuntime>();
-    let (connection_changed, event_state) = match runtime.latest_state.lock() {
-        Ok(latest) if *latest == state => (false, None),
-        Ok(mut latest) => {
-            let previous_source = latest.media.as_ref().map(|media| media.source.as_str());
-            let next_source = state.media.as_ref().map(|media| media.source.as_str());
-            let connection_changed = latest.status != state.status
-                || latest.session_count != state.session_count
-                || previous_source != next_source;
-            let preserve_artwork = same_media_identity(latest.media.as_ref(), state.media.as_ref());
-            let artwork_unchanged = preserve_artwork
-                && latest
-                    .media
-                    .as_ref()
-                    .and_then(|media| media.artwork_data_url.as_deref())
-                    == state
-                        .media
-                        .as_ref()
-                        .and_then(|media| media.artwork_data_url.as_deref());
-            *latest = state;
-            let cached_artwork = if artwork_unchanged {
-                latest
-                    .media
-                    .as_mut()
-                    .and_then(|media| media.artwork_data_url.take())
-            } else {
-                None
-            };
-            let event_state = latest.clone();
-            if let Some(artwork) = cached_artwork {
-                if let Some(media) = latest.media.as_mut() {
-                    media.artwork_data_url = Some(artwork);
-                }
-            }
-            (connection_changed, Some(event_state))
-        }
-        Err(_) => (true, Some(state)),
-    };
-    if connection_changed {
-        let state = event_state
-            .as_ref()
-            .expect("changed state must be available");
-        let source = state
-            .media
-            .as_ref()
-            .map(|media| media.source.as_str())
-            .unwrap_or("none");
-        log::info!(
-            "Atoll Connect: {:?}, {} session(s), source {source}",
-            state.status,
-            state.session_count
-        );
-    }
-    if let Some(state) = event_state {
-        if let Err(error) = app.emit("media-update", state) {
-            log::debug!("Unable to emit media state: {error}");
-        }
-    }
-}
-
-fn same_media_identity(previous: Option<&MediaSnapshot>, next: Option<&MediaSnapshot>) -> bool {
-    match (previous, next) {
-        (Some(previous), Some(next)) => {
-            previous.session_revision == next.session_revision
-                && previous.source == next.source
-                && previous.title == next.title
-                && previous.artist == next.artist
-        }
-        _ => false,
     }
 }
 

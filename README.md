@@ -47,6 +47,7 @@ Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐�
 - **不打断当前工作**：窗口不抢焦点、不进入普通任务栏列表，并在全屏应用中自动隐藏。
 - **遵循 Windows**：跟随系统浅色/深色主题与“减少动画”设置，使用 Windows 媒体会话和 Core Audio 事件。
 - **状态可预测**：窗口尺寸、自动收起、媒体来源选择和计时器恢复都有明确规则。
+- **多状态可浏览**：音乐与计时器同时活跃时，Compact 会轮播卡片；悬停即暂停，也可直接用滚轮或方向键切换。
 - **本地优先**：不需要账号，不上传媒体信息，没有遥测、广告或云端依赖。
 
 ## 当前能力
@@ -64,6 +65,7 @@ Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐�
 ### Atoll Connect：当前媒体
 
 - 通过 Windows Global System Media Transport Controls（GSMTC）读取兼容播放器的公开媒体会话。
+- 当前内置来源为 `builtin.windows-media-session`；Connect Hub 统一聚合来源、选择当前媒体并路由控制命令。
 - 支持 QQ 音乐、Spotify、浏览器等会向 Windows 发布媒体状态的应用。
 - 展示封面、标题、艺术家、来源、播放状态与真实时间进度。
 - 根据播放器公布的能力提供上一首、播放/暂停、下一首；不支持的控制会自动禁用。
@@ -93,9 +95,12 @@ Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐�
 
 “自动收起”不等于始终隐藏：仍有媒体会话，或计时器处于运行、暂停、完成状态时，Expanded 通常会回到 Compact；没有活跃内容时才按设置回到 Reef 或 Hidden。
 
+当媒体与运行中或暂停的计时器同时存在时，它们会成为同一 Compact 卡组：默认约每 6 秒切换一次，鼠标悬停、键盘聚焦、媒体命令执行期间会暂停。将指针放在 Compact 上滚动鼠标滚轮，或聚焦后使用方向键，可以手动前后切换；一次触控板手势只切换一张，音量反馈和计时完成态不会加入轮播。
+
 ## 使用方式
 
 - 点击 Reef 打开 Atoll，点击 Compact 查看详细控制。
+- 当 Compact 底部出现分页提示时，将鼠标放在卡片上滚动即可切换；也可聚焦卡片后使用上下或左右方向键。
 - 使用 `Ctrl + Shift + Space` 在 Expanded 与当前有效的收起状态之间切换。若快捷键已被其他应用占用，Atoll 仍会正常启动，并记录冲突。
 - 左键单击托盘图标可执行同样的切换；右键 Atoll 或托盘图标可打开快捷菜单、进入设置或退出。
 - Expanded 首页底部的 Hide 可让 Atoll 完全隐藏；再次使用快捷键或托盘入口即可唤回。
@@ -247,7 +252,8 @@ Atoll
 ├─ src-tauri/                  Windows 原生宿主与打包配置
 │  └─ src/
 │     ├─ shell.rs              窗口、DPI、定位、动画与命中区域
-│     ├─ media.rs              Windows GSMTC 媒体会话
+│     ├─ connect/              媒体来源契约、聚合、命令路由与发布
+│     │  └─ providers/         随 Atoll 编译的已审核来源实现
 │     ├─ volume.rs             Windows Core Audio 监听
 │     ├─ fullscreen.rs         前台全屏检测
 │     ├─ timer.rs              原生计时调度
@@ -298,6 +304,22 @@ Fix expanded auto-collapse timing
 Add media session fallback tests
 Document NSIS release workflow
 ```
+
+### 贡献 Atoll Connect Provider
+
+现阶段 Provider 采用刻意精简的源码贡献模式：实现会随 Atoll 一起编译，由维护者通过 Pull Request 审核，不支持运行时安装插件、加载第三方 DLL 或注入自定义界面。这样既能扩展来源，也不会过早引入插件商店、签名、权限和沙箱体系。
+
+兼容 GSMTC 的播放器已经由 `builtin.windows-media-session` 覆盖，不需要为 QQ 音乐、Spotify 或浏览器分别复制一套 Provider。只有来源不发布 GSMTC，或确实能补充歌词等系统接口没有的数据时，才适合新增实现。
+
+新增 Provider 时：
+
+1. 在 `src-tauri/src/connect/providers/` 下创建独立模块，实现 `ConnectProvider`，并在 `providers/mod.rs` 注册。
+2. 使用稳定且唯一的 Provider ID；每个可控制目标提供稳定的 `target_id`，目标变化时递增 Provider 自己的 generation。
+3. 只发布结构化状态并处理强类型 `MediaAction`。Provider 不直接依赖 Tauri、不发送前端事件，也不提供 HTML/CSS；公开 UI、来源选择和 `session_revision` 由 Connect Hub 统一管理。
+4. 为状态映射、能力映射和失败回退补充测试；可复用现有 Fake Provider 测试方式验证多来源选择、命令路由与旧命令拒绝。
+5. 在 PR 中说明所需的 Windows API、网络或本地数据访问，附上支持的软件版本和 Windows 11 实机验证结果。
+
+这一阶段的 Provider 是仓库内部 Rust 接口，不承诺独立二进制 ABI。接口调整会与实现一起在同一个 PR 中审核和编译验证。
 
 ### Pull Request 应包含
 

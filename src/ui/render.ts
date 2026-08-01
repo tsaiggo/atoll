@@ -1,5 +1,12 @@
 import type { AppViewModel } from "../app/types";
-import { formatPlaybackTime, mediaPositionMs, type MediaStatus } from "../domain";
+import {
+  formatDuration,
+  formatPlaybackTime,
+  mediaPositionMs,
+  remainingMs,
+  type MediaStatus,
+  type TimerStatus,
+} from "../domain";
 import { shellGeometryStyle } from "../shell/geometry";
 import { renderCompactShell } from "./compact";
 import { renderExpandedShell } from "./expanded";
@@ -8,6 +15,7 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
   const focusedAction = root
     .querySelector<HTMLElement>("[data-action]:focus")
     ?.dataset.action;
+  const focusedInsideShell = Boolean(root.querySelector<HTMLElement>(":focus"));
   root.dataset.shell = vm.shell;
   root.dataset.content = vm.content;
   root.classList.toggle("motion-disabled", vm.motionDisabled);
@@ -21,15 +29,18 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
       <button class="atoll-shell reef" ${shellGeometryStyle("reef")} type="button" aria-label="Open Atoll">
         <span class="reef__tide"></span>
       </button>`;
+    if (focusedInsideShell) root.querySelector<HTMLElement>("button.reef")?.focus();
     return;
   }
   if (vm.shell === "compact") {
     root.innerHTML = renderCompactShell(vm);
-    restoreFocusedAction(root, focusedAction);
+    const actionRestored = restoreFocusedAction(root, focusedAction);
+    if (!actionRestored && focusedInsideShell) restoreCompactFocus(root);
     return;
   }
   root.innerHTML = renderExpandedShell(vm);
-  restoreFocusedAction(root, focusedAction);
+  const actionRestored = restoreFocusedAction(root, focusedAction);
+  if (!actionRestored && focusedInsideShell) restoreExpandedFocus(root);
 }
 
 export function updateMediaProgress(
@@ -53,10 +64,45 @@ export function updateMediaProgress(
   if (elapsed) elapsed.textContent = formatPlaybackTime(position);
 }
 
-function restoreFocusedAction(root: HTMLElement, action?: string): void {
-  if (!action) return;
+export function updateTimerRemaining(
+  root: HTMLElement,
+  timer: TimerStatus,
+  now = Date.now(),
+): void {
+  const value = formatDuration(remainingMs(timer, now));
+  root
+    .querySelectorAll<HTMLElement>("[data-timer-remaining]")
+    .forEach(
+      (element) =>
+        (element.textContent = `${value}${element.dataset.timerRemainingSuffix ?? ""}`),
+    );
+  const compactTimer = root.querySelector<HTMLElement>(".compact--timer");
+  if (compactTimer) {
+    const suffix = compactTimer.dataset.timerAriaSuffix ?? "";
+    compactTimer.setAttribute(
+      "aria-label",
+      `Focus timer, ${value} remaining, running. Expand Atoll${suffix}`,
+    );
+  }
+}
+
+function restoreFocusedAction(root: HTMLElement, action?: string): boolean {
+  if (!action) return false;
   const target = Array.from(root.querySelectorAll<HTMLElement>("[data-action]")).find(
     (element) => element.dataset.action === action && !element.hasAttribute("disabled"),
   );
+  target?.focus({ preventScroll: true });
+  return Boolean(target);
+}
+
+function restoreCompactFocus(root: HTMLElement): void {
+  const target = root.querySelector<HTMLElement>("button.compact, .compact-media__open");
+  target?.focus({ preventScroll: true });
+}
+
+function restoreExpandedFocus(root: HTMLElement): void {
+  const target =
+    root.querySelector<HTMLElement>("[data-action='collapse']:not([disabled])") ??
+    root.querySelector<HTMLElement>("[data-action]:not([disabled])");
   target?.focus({ preventScroll: true });
 }
