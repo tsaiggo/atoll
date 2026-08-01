@@ -1,9 +1,7 @@
 import type { AtollSettings } from "../config";
 import {
-  formatDuration,
   formatPlaybackTime,
   mediaPositionMs,
-  remainingMs,
   type MediaConnection,
   type MediaStatus,
 } from "../domain";
@@ -66,10 +64,6 @@ export function renderMediaProgress(
     </div>`;
 }
 
-export function timerPresetButton(minutes: number, language: UiLanguage): string {
-  return `<button type="button" data-action="start-timer" data-value="${minutes}">${copyFor(language).timer.minutes(minutes)}</button>`;
-}
-
 export function renderCover(
   current: MediaStatus | null,
   className: string,
@@ -109,12 +103,6 @@ export function compactAccessibleLabel(vm: AppViewModel): string {
       const percentage = Math.round(vm.volume.level * 100);
       return `${copy.volume.accessibleValue(percentage, vm.volume.muted)}. ${expand}`;
     }
-    case "timer":
-      return vm.timer.phase === "paused"
-        ? copy.timer.accessiblePaused(formatDuration(remainingMs(vm.timer, vm.now)), expand)
-        : copy.timer.accessibleRunning(formatDuration(remainingMs(vm.timer, vm.now)), "");
-    case "timer-finished":
-      return copy.timer.accessibleComplete(expand);
     default:
       return `Atoll. ${expand}`;
   }
@@ -122,9 +110,6 @@ export function compactAccessibleLabel(vm: AppViewModel): string {
 
 export function homeStatusLine(vm: AppViewModel): string {
   const copy = copyFor(vm.settings.language).shell;
-  if (vm.timer.phase === "running") {
-    return copy.remaining(formatDuration(remainingMs(vm.timer, vm.now)));
-  }
   if (vm.media?.playing) return copy.mediaPlaying;
   return copy.tagline;
 }

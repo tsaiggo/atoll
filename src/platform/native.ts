@@ -28,7 +28,6 @@ export interface NativeEventHandlers {
   onAction(action: string): void;
   onMediaUpdate(payload: NativeMediaUpdatePayload): void;
   onVolume(payload: NativeVolumePayload): void;
-  onTimerElapsed(shouldSurface: boolean): void;
   onFullscreenChanged(payload: { fullscreen: boolean }): void;
 }
 
@@ -69,13 +68,6 @@ export function runNativeMediaCommand(
   return invoke<boolean>("media_command", { command, sessionRevision });
 }
 
-export function scheduleNativeTimer(
-  endAtMs: number | null,
-  breakFullscreen: boolean,
-): Promise<void> {
-  return invoke("schedule_timer", { endAtMs, breakFullscreen });
-}
-
 export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<UnlistenFn[]> {
   return Promise.all([
     listen<string>("atoll-action", ({ payload }) => handlers.onAction(payload)),
@@ -83,7 +75,6 @@ export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<Un
       handlers.onMediaUpdate(payload),
     ),
     listen<NativeVolumePayload>("system-volume", ({ payload }) => handlers.onVolume(payload)),
-    listen<boolean>("timer-elapsed", ({ payload }) => handlers.onTimerElapsed(payload)),
     listen<{ fullscreen: boolean }>("fullscreen-changed", ({ payload }) =>
       handlers.onFullscreenChanged(payload),
     ),

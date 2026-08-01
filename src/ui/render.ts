@@ -1,11 +1,8 @@
 import type { AppViewModel } from "../app/types";
 import {
-  formatDuration,
   formatPlaybackTime,
   mediaPositionMs,
-  remainingMs,
   type MediaStatus,
-  type TimerStatus,
 } from "../domain";
 import { copyFor, type UiLanguage } from "../i18n";
 import { shellGeometryStyle } from "../shell/geometry";
@@ -67,29 +64,6 @@ export function updateMediaProgress(
     );
   }
   if (elapsed) elapsed.textContent = formatPlaybackTime(position);
-}
-
-export function updateTimerRemaining(
-  root: HTMLElement,
-  timer: TimerStatus,
-  language: UiLanguage,
-  now = Date.now(),
-): void {
-  const value = formatDuration(remainingMs(timer, now));
-  const copy = copyFor(language);
-  root
-    .querySelectorAll<HTMLElement>("[data-timer-remaining]")
-    .forEach((element) => {
-      element.textContent =
-        element.dataset.timerRemainingCopy === "remaining"
-          ? copy.shell.remaining(value)
-          : value;
-    });
-  const compactTimer = root.querySelector<HTMLElement>(".compact--timer");
-  if (compactTimer) {
-    const suffix = compactTimer.dataset.timerAriaSuffix ?? "";
-    compactTimer.setAttribute("aria-label", copy.timer.accessibleRunning(value, suffix));
-  }
 }
 
 function restoreFocusedAction(root: HTMLElement, action?: string): boolean {

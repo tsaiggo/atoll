@@ -14,17 +14,12 @@ export interface AppCopy {
     readonly readyTitle: string;
     readonly readyDetail: string;
     readonly mediaPlaying: string;
-    readonly remaining: (value: string) => string;
   };
   readonly actions: {
     readonly play: string;
     readonly pause: string;
     readonly previous: string;
     readonly next: string;
-    readonly continue: string;
-    readonly restart: string;
-    readonly cancel: string;
-    readonly stop: string;
     readonly working: (label: string) => string;
   };
   readonly media: {
@@ -68,28 +63,6 @@ export interface AppCopy {
     readonly percent: (value: number) => string;
     readonly accessibleValue: (value: number, muted: boolean) => string;
   };
-  readonly timer: {
-    readonly start: string;
-    readonly presets: string;
-    readonly minutes: (value: number) => string;
-    readonly focus: string;
-    readonly paused: string;
-    readonly inProgress: string;
-    readonly focusPaused: string;
-    readonly focusTimer: string;
-    readonly running: string;
-    readonly accurateTime: string;
-    readonly timesUp: string;
-    readonly complete: string;
-    readonly completionMessage: string;
-    readonly remaining: (value: string) => string;
-    readonly accessibleRunning: (value: string, suffix: string) => string;
-    readonly accessiblePaused: (value: string, expand: string) => string;
-    readonly accessibleComplete: (expand: string) => string;
-  };
-  readonly carousel: {
-    readonly position: (position: number, count: number) => string;
-  };
   readonly settings: {
     readonly title: string;
     readonly subtitle: string;
@@ -117,17 +90,12 @@ const EN: AppCopy = {
     readyTitle: "Atoll is ready",
     readyDetail: "Click to surface controls",
     mediaPlaying: "Media is playing",
-    remaining: (value) => `${value} remaining`,
   },
   actions: {
     play: "Play",
     pause: "Pause",
     previous: "Previous",
     next: "Next",
-    continue: "Continue",
-    restart: "Restart",
-    cancel: "Cancel",
-    stop: "Stop",
     working: (label) => `${label}, working`,
   },
   media: {
@@ -169,31 +137,6 @@ const EN: AppCopy = {
     accessibleValue: (value, muted) =>
       muted ? `Muted, ${value} percent` : `${value} percent`,
   },
-  timer: {
-    start: "Start a focus timer",
-    presets: "Timer presets",
-    minutes: (value) => `${value} min`,
-    focus: "Focus",
-    paused: "Paused",
-    inProgress: "In progress",
-    focusPaused: "Focus paused",
-    focusTimer: "Focus timer",
-    running: "Running",
-    accurateTime: "Ends from real elapsed time",
-    timesUp: "Time’s up",
-    complete: "Focus session complete",
-    completionMessage: "Your session is complete. Take a breath before the next one.",
-    remaining: (value) => `${value} remaining`,
-    accessibleRunning: (value, suffix) =>
-      `Focus timer, ${value} remaining, running. Expand Atoll${suffix}`,
-    accessiblePaused: (value, expand) =>
-      `Focus timer, ${value} remaining, paused. ${expand}`,
-    accessibleComplete: (expand) => `Focus timer complete. ${expand}`,
-  },
-  carousel: {
-    position: (position, count) =>
-      `. Card ${position} of ${count}. Use the mouse wheel or arrow keys to switch`,
-  },
   settings: {
     title: "Settings",
     subtitle: "Theme and motion follow Windows",
@@ -221,17 +164,12 @@ const ZH_CN: AppCopy = {
     readyTitle: "Atoll 已就绪",
     readyDetail: "点击查看快捷控制",
     mediaPlaying: "正在播放媒体",
-    remaining: (value) => `剩余 ${value}`,
   },
   actions: {
     play: "播放",
     pause: "暂停",
     previous: "上一首",
     next: "下一首",
-    continue: "继续",
-    restart: "重新开始",
-    cancel: "取消",
-    stop: "结束",
     working: (label) => `${label}，处理中`,
   },
   media: {
@@ -271,30 +209,6 @@ const ZH_CN: AppCopy = {
     percent: (value) => `${value}%`,
     accessibleValue: (value, muted) =>
       muted ? `已静音，音量 ${value}%` : `音量 ${value}%`,
-  },
-  timer: {
-    start: "开始专注计时",
-    presets: "计时预设",
-    minutes: (value) => `${value} 分钟`,
-    focus: "专注",
-    paused: "已暂停",
-    inProgress: "进行中",
-    focusPaused: "专注已暂停",
-    focusTimer: "专注计时",
-    running: "计时中",
-    accurateTime: "按真实经过时间计算",
-    timesUp: "时间到",
-    complete: "本次专注已完成",
-    completionMessage: "本次专注已经完成，休息一下再继续。",
-    remaining: (value) => `剩余 ${value}`,
-    accessibleRunning: (value, suffix) =>
-      `专注计时，剩余 ${value}，进行中。展开 Atoll${suffix}`,
-    accessiblePaused: (value, expand) => `专注计时，剩余 ${value}，已暂停。${expand}`,
-    accessibleComplete: (expand) => `专注计时已完成。${expand}`,
-  },
-  carousel: {
-    position: (position, count) =>
-      `。第 ${position} 张，共 ${count} 张。可使用鼠标滚轮或方向键切换`,
   },
   settings: {
     title: "设置",

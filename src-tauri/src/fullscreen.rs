@@ -1,7 +1,7 @@
 use std::{thread, time::Duration};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use windows::Win32::{
     Foundation::{HWND, RECT},
     Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST},
@@ -10,8 +10,6 @@ use windows::Win32::{
         IsWindowVisible,
     },
 };
-
-use crate::runtime::{set_fullscreen, RuntimeState};
 
 #[derive(Clone, Serialize)]
 struct FullscreenPayload {
@@ -23,7 +21,6 @@ pub fn start_watcher(app: AppHandle) {
         let mut previous = false;
         loop {
             let fullscreen = is_foreground_fullscreen();
-            set_fullscreen(&app.state::<RuntimeState>(), fullscreen);
             if fullscreen != previous {
                 previous = fullscreen;
                 let _ = app.emit("fullscreen-changed", FullscreenPayload { fullscreen });

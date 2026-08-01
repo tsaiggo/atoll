@@ -11,8 +11,6 @@ colors:
   tide-mint: "#65d6c5"
   tide-mint-bright: "#79dfcf"
   tide-ink: "#071511"
-  timer-sand: "#e6bd68"
-  coral-finished: "#f07b6d"
   acrylic-dark-fallback: "#2c2c2c"
   acrylic-light-fallback: "#f9f9f9"
   card-fill-dark: "rgba(255, 255, 255, 0.051)"
@@ -20,8 +18,6 @@ colors:
   card-stroke-dark: "rgba(0, 0, 0, 0.098)"
   card-stroke-light: "rgba(0, 0, 0, 0.059)"
   meter-track: "#35413e"
-  completion-muted: "#d8aaa4"
-  completion-ink: "#2a0e0a"
   switch-track: "#353b44"
   switch-thumb: "#d8dde4"
   light-reef: "#f9f9f9"
@@ -31,12 +27,6 @@ colors:
   light-mist: "rgba(0, 0, 0, 0.620)"
   light-tide: "#16786c"
 typography:
-  display:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "26px"
-    fontWeight: 650
-    lineHeight: 1
-    letterSpacing: "-0.035em"
   title:
     fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "13px"
@@ -55,18 +45,6 @@ typography:
     fontWeight: 600
     lineHeight: 1.35
     letterSpacing: "normal"
-  timer-compact:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "16px"
-    fontWeight: 620
-    lineHeight: 1
-    letterSpacing: "-0.025em"
-  completion:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "19px"
-    fontWeight: 650
-    lineHeight: 1.1
-    letterSpacing: "-0.025em"
   control:
     fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
     fontSize: "10.5px"
@@ -89,7 +67,6 @@ rounded:
   hairline: "2px"
   tide-line: "3px"
   small: "8px"
-  preset: "8px"
   control-soft: "8px"
   control: "8px"
   compact-inset: "9px"
@@ -124,20 +101,11 @@ components:
     rounded: "{rounded.expanded}"
     padding: "8px 16px"
     size: "384px × 148px"
-  button-primary:
-    backgroundColor: "{colors.tide-mint}"
-    textColor: "{colors.tide-ink}"
-    typography: "{typography.label}"
-    rounded: "{rounded.control}"
-    padding: "0 12px"
-    height: "32px"
-  button-secondary:
+  media-transport:
     backgroundColor: "{colors.raised-basin}"
-    textColor: "{colors.mist-text}"
-    typography: "{typography.label}"
-    rounded: "{rounded.control}"
-    padding: "0 12px"
-    height: "32px"
+    textColor: "{colors.tide-mint} for Play/Pause; {colors.mist-text} otherwise"
+    rounded: "{rounded.circle}"
+    size: "42px primary; 36px secondary"
   card-media:
     backgroundColor: "transparent; {colors.raised-basin} on hover"
     textColor: "{colors.foam-white}"
@@ -158,7 +126,7 @@ components:
 
 Atoll is an edge-attached instrument that feels grown from the top of the display rather than placed on it. Its shell follows the Windows app theme through the official material fallback colors, WinUI Card fill, a restrained semantic wash, and a single Card contour; one thin tide line remains the Atoll signature. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
 
-The shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life; sand marks elapsed time; coral is reserved for a completed timer that requires acknowledgement.
+The shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life, while transient system feedback uses a restrained module wash rather than another permanent accent.
 
 **Key Characteristics:**
 
@@ -170,23 +138,18 @@ The shell is the identity. Reef, Compact, and Expanded are three expressions of 
 
 ## Colors
 
-The palette is a submerged neutral field with one cool living accent and two narrowly scoped semantic signals. Windows light/dark preference is the source of truth and changes must repaint in place without rebuilding or focusing the window. Light mode uses deeper teal, sand, and coral values so semantic controls retain contrast instead of merely inverting the dark palette.
+The palette is a submerged neutral field with one cool living accent. Windows light/dark preference is the source of truth and changes must repaint in place without rebuilding or focusing the window. Light mode uses deeper teal and system-aligned neutral fills so controls retain contrast instead of merely inverting the dark palette.
 
 ### Primary
 
 - **Tide Mint:** The brand signal for the tide line, active controls, focus outlines, and selected states. Its brighter partner is hover-only.
-
-### Secondary
-
-- **Timer Sand:** Running and paused timer information only; it never competes with the main brand accent.
-- **Coral Finished:** Sticky completion states and their acknowledgement control.
 
 ### Neutral
 
 - **Acrylic Fallback:** The system-aligned solid backing used by the exact-fit native shell. It avoids rectangular compositor spill outside Atoll's lower corners.
 - **Card Fill:** The official WinUI Card overlay above the fallback backing in each theme.
 - **Card Stroke:** One official WinUI contour around the complete shell.
-- **Module Wash:** A low-opacity material tint beneath content: mint for media, blue for volume, sand for a running timer, and coral for completion. It identifies state without recoloring text or controls.
+- **Module Wash:** A low-opacity material tint beneath content: mint for media and blue for transient volume feedback. It identifies state without recoloring text or controls.
 - **Raised Basin:** Hovered rows and secondary buttons.
 - **Soft Basin:** Gentle hover and nested-control separation.
 - **Foam White:** Primary text and high-confidence values.
@@ -195,8 +158,6 @@ The palette is a submerged neutral field with one cool living accent and two nar
 - **Light Reef:** A neutral Windows Card surface with dark system text and the same one-pixel contour.
 
 **The One Tide Rule.** Mint should remain a minority of the visible surface; use it to explain state, not to decorate empty space.
-
-**The Semantic Shore Rule.** Sand means time in progress and coral means completion. Do not reuse either as a general-purpose accent.
 
 ## Typography
 
@@ -207,7 +168,6 @@ The palette is a submerged neutral field with one cool living accent and two nar
 
 ### Hierarchy
 
-- **Display:** Used only for the Expanded timer value; tabular numerals prevent width jitter.
 - **Title:** Product, settings, and panel titles.
 - **Body:** Compact primary text, media titles, and action labels.
 - **Label:** Artists, sources, state descriptions, and tertiary controls.
@@ -221,8 +181,6 @@ Atoll is anchored to the physical top-center of the primary display. Its nominal
 Expanded uses three short rows—header, one task area, footer—with no more than three major operation groups. Its 16 DIP horizontal inset and 4/8/16 rhythm borrow the calm density of Windows Widgets. Album art and state glyphs occupy the leading edge; the highest-value action sits at the trailing edge or the optical center.
 
 The native host, not CSS media queries, owns display scaling and repositioning. Content must remain clipped and legible at 125%, 150%, and 200% scaling, including on displays with negative desktop coordinates.
-
-When more than one persistent status is active, Compact presents a stable card carousel rather than stacking content or resizing the shell. A two-mark pager sits on the lower centerline without changing the 188 × 44 DIP geometry. Automatic advancement uses a quiet six-second cadence and pauses while the pointer or keyboard focus is inside the shell; wheel and arrow-key input provide direct bidirectional control. Volume feedback and completed timers are overlays, not carousel pages.
 
 ## Elevation & Depth
 
@@ -245,14 +203,14 @@ The logo is a sturdy incomplete elliptical ring with negative space. It must rem
 ### Buttons
 
 - **Shape:** Compact rounded rectangles for text actions; circles for transport controls.
-- **Primary:** Tide Mint with Tide Ink, reserved for the most likely action.
-- **Secondary:** Raised Basin with Mist Text; hover lifts the tone and text contrast.
+- **Primary transport:** A 42 DIP neutral circle with a Tide Mint glyph, restrained edge, and top glint.
+- **Secondary transport:** A 36 DIP neutral circle with Mist Text; hover lifts the tone and text contrast.
 - **Hover / Focus:** Hover uses color and tonal shifts only. Keyboard focus uses a two-pixel Tide Mint inset outline.
 
 ### Chips
 
-- **Style:** Timer state and segmented settings use small tonal chips with concise labels.
-- **State:** Selected settings invert to Tide Mint and Tide Ink; timer status remains sand-on-transparent-sand.
+- **Style:** Segmented settings use small tonal chips with concise labels.
+- **State:** Selected settings invert to Tide Mint and Tide Ink.
 
 ### Cards / Containers
 
@@ -267,7 +225,7 @@ Reef, Compact, and Expanded share the outer color, tide-line signature, top atta
 
 ### Media Transport
 
-Previous and Next are quiet circular controls. Play/Pause is larger and uses the primary treatment. Unsupported transport commands remain visible only when their absence would not mislead; otherwise they are disabled with reduced opacity.
+Previous and Next are quiet 36 DIP circular controls. Play/Pause is a larger 42 DIP circle with a Tide Mint glyph and subtle material depth. Unsupported transport commands remain visible only when their absence would not mislead; otherwise they are disabled with reduced opacity.
 
 ### Settings Toggle
 
@@ -279,11 +237,10 @@ The switch is a short dark track with a solid circular thumb. The on state uses 
 
 - **Do** let the tide line and shell transformation carry the brand.
 - **Do** keep the most important value readable in a peripheral glance.
-- **Do** use tabular numerals for time and percentage changes.
+- **Do** use tabular numerals for changing percentages.
 - **Do** update content in-place when the shell size does not change.
 - **Do** follow the live Windows app theme without changing window geometry, focus, or current state.
 - **Do** preserve a clear icon, label, or shape cue in addition to semantic color.
-- **Do** keep Compact carousel transitions in-place, directional, and under 200 ms.
 
 ### Don't:
 

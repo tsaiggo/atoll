@@ -39,10 +39,6 @@ impl MenuLanguage {
                 demo_media: "Media playing",
                 #[cfg(debug_assertions)]
                 demo_volume: "Volume",
-                #[cfg(debug_assertions)]
-                demo_timer: "Timer running",
-                #[cfg(debug_assertions)]
-                demo_finished: "Timer finished",
             },
             Self::SimplifiedChinese => MenuLabels {
                 toggle: "显示或隐藏 Atoll",
@@ -57,10 +53,6 @@ impl MenuLanguage {
                 demo_media: "媒体播放",
                 #[cfg(debug_assertions)]
                 demo_volume: "音量",
-                #[cfg(debug_assertions)]
-                demo_timer: "计时进行中",
-                #[cfg(debug_assertions)]
-                demo_finished: "计时已结束",
             },
         }
     }
@@ -80,10 +72,6 @@ struct MenuLabels {
     demo_media: &'static str,
     #[cfg(debug_assertions)]
     demo_volume: &'static str,
-    #[cfg(debug_assertions)]
-    demo_timer: &'static str,
-    #[cfg(debug_assertions)]
-    demo_finished: &'static str,
 }
 
 #[cfg(debug_assertions)]
@@ -92,8 +80,6 @@ struct DebugMenuItems<R: Runtime> {
     idle: MenuItem<R>,
     media: MenuItem<R>,
     volume: MenuItem<R>,
-    timer: MenuItem<R>,
-    finished: MenuItem<R>,
 }
 
 struct LocalizedMenu<R: Runtime> {
@@ -117,8 +103,6 @@ impl<R: Runtime> LocalizedMenu<R> {
             self.debug.idle.set_text(labels.demo_idle)?;
             self.debug.media.set_text(labels.demo_media)?;
             self.debug.volume.set_text(labels.demo_volume)?;
-            self.debug.timer.set_text(labels.demo_timer)?;
-            self.debug.finished.set_text(labels.demo_finished)?;
         }
 
         Ok(())
@@ -175,34 +159,13 @@ fn create_menu<R: Runtime>(
         let idle = MenuItem::with_id(app, "demo:idle", labels.demo_idle, true, None::<&str>)?;
         let media = MenuItem::with_id(app, "demo:media", labels.demo_media, true, None::<&str>)?;
         let volume = MenuItem::with_id(app, "demo:volume", labels.demo_volume, true, None::<&str>)?;
-        let demo_timer = MenuItem::with_id(
-            app,
-            "demo:timer-running",
-            labels.demo_timer,
-            true,
-            None::<&str>,
-        )?;
-        let finished = MenuItem::with_id(
-            app,
-            "demo:timer-finished",
-            labels.demo_finished,
-            true,
-            None::<&str>,
-        )?;
-        let submenu = Submenu::with_items(
-            app,
-            labels.demo,
-            true,
-            &[&idle, &media, &volume, &demo_timer, &finished],
-        )?;
+        let submenu = Submenu::with_items(app, labels.demo, true, &[&idle, &media, &volume])?;
 
         DebugMenuItems {
             submenu,
             idle,
             media,
             volume,
-            timer: demo_timer,
-            finished,
         }
     };
 

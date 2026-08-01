@@ -1,14 +1,8 @@
 import type { AppViewModel, ExpandedPanel, PreviewMode } from "./app/types";
 import { consumeFirstRun, loadSettings, saveSettings } from "./config";
 import {
-  createTimer,
   DEMO_MEDIA,
-  EMPTY_TIMER,
   normalizeMedia,
-  pauseTimer,
-  reconcileTimer,
-  restartTimer,
-  resumeTimer,
   type ContentKind,
   type MediaConnection,
   type MediaStatus,
@@ -16,7 +10,6 @@ import {
   type NativeMediaUpdatePayload,
   type NativeVolumePayload,
   type ShellState,
-  type TimerStatus,
   type VolumeStatus,
 } from "./domain";
 import {
@@ -27,15 +20,6 @@ import {
   type MediaCommand,
   type MediaCommandFeedback,
 } from "./features/media/commands";
-import {
-  availableCarouselCards,
-  CAROUSEL_ADVANCE_MS,
-  reconcileCarouselCard,
-  stepCarouselCard,
-  type CarouselCardKind,
-  type CarouselDirection,
-} from "./features/surface/carousel";
-import { loadTimer, saveTimer } from "./features/timer/storage";
 import { copyFor, normalizeLanguage } from "./i18n";
 import {
   applyNativeShell,
@@ -43,22 +27,18 @@ import {
   getMediaStatus,
   nativeRuntime,
   runNativeMediaCommand,
-  scheduleNativeTimer,
   setNativeMenuLanguage,
   showNativeContextMenu,
   subscribeNativeEvents,
 } from "./platform/native";
 import { SHELL_GEOMETRY } from "./shell/geometry";
-import { renderApp, updateMediaProgress, updateTimerRemaining } from "./ui/render";
+import { renderApp, updateMediaProgress } from "./ui/render";
 import "./styles.css";
 
 interface NativeAcceptedShell {
   shell: ShellState;
   signature: string;
 }
-
-const CAROUSEL_WHEEL_THRESHOLD_PX = 28;
-const CAROUSEL_WHEEL_RESET_MS = 180;
 
 const appElement = document.querySelector<HTMLElement>("#app");
 if (!appElement) throw new Error("Atoll root element was not found.");
@@ -80,7 +60,6 @@ let expandedPanel: ExpandedPanel = "home";
 let media: MediaStatus | null = null;
 let mediaConnection: MediaConnection = { status: "checking", sessionCount: 0 };
 let volume: VolumeStatus = { level: 0, muted: false };
-let timer: TimerStatus = loadTimer();
 let fullscreen = false;
 let fullscreenOverride = false;
 let demoOverride: ContentKind | null = null;
@@ -88,18 +67,9 @@ let transientExpiryId: number | null = null;
 let expandedExpiryId: number | null = null;
 let expandedExpiryDeadline = 0;
 let expandedSessionRevision = 0;
-let timerTickId: number | null = null;
 let mediaProgressTickId: number | null = null;
 let volumeVisibleUntil = 0;
 let mediaFlashUntil = 0;
-let carouselActiveCard: CarouselCardKind | null = null;
-let carouselMotion: CarouselDirection | null = null;
-let carouselAdvanceId: number | null = null;
-let carouselPointerInside = false;
-let carouselFocusInside = false;
-let carouselWheelAccumulator = 0;
-let carouselWheelLocked = false;
-let carouselWheelUnlockId: number | null = null;
 let lastMediaIdentity = "";
 let pendingMediaCommand: MediaCommand | null = null;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
@@ -115,10 +85,9 @@ function isPreviewMode(value: string | null): value is PreviewMode {
   return (
     value === "reef" ||
     value === "compact-media" ||
-    value === "compact-carousel" ||
+    value === "expanded-home" ||
     value === "expanded-media" ||
-    value === "settings" ||
-    value === "timer-finished"
+    value === "settings"
   );
 }
 
@@ -129,15 +98,8 @@ app.addEventListener("pointermove", onExpandedActivity);
 app.addEventListener("pointerdown", onExpandedActivity);
 app.addEventListener("pointerleave", onExpandedActivity);
 app.addEventListener("pointercancel", onExpandedActivity);
-app.addEventListener("wheel", onCarouselWheel, { passive: false });
-app.addEventListener("pointerenter", onCarouselPointerEnter);
-app.addEventListener("pointerleave", onCarouselPointerLeave);
-app.addEventListener("pointercancel", onCarouselPointerLeave);
-app.addEventListener("focusin", onCarouselFocusIn);
-app.addEventListener("focusout", onCarouselFocusOut);
 window.addEventListener("keydown", onKeyDown);
 reducedMotion.addEventListener("change", () => {
-  resetCarouselAutoRotation();
   render();
 });
 lightColorScheme.addEventListener("change", () => {
@@ -147,9 +109,7 @@ lightColorScheme.addEventListener("change", () => {
   }
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    clearCarouselAutoRotation();
-  } else if (!previewMode) {
+  if (!document.hidden && !previewMode) {
     reconcilePresentation();
   }
   scheduleMediaProgressTick();
@@ -168,13 +128,8 @@ async function startApplication(): Promise<void> {
       console.warn("Unable to update the Atoll menu language", error),
     );
   }
-  timer = reconcileTimer(timer);
   if (shouldHideForFullscreen()) {
     await setShell("hidden", false);
-  } else if (timer.phase === "finished") {
-    content = "timer-finished";
-    expandedPanel = "timer-finished";
-    await setShell("compact", false);
   } else if (firstRun) {
     content = "welcome";
     await setShell("compact", false);
@@ -182,21 +137,11 @@ async function startApplication(): Promise<void> {
   } else {
     reconcilePresentation(false);
   }
-  scheduleTimerTick();
-
   if (!nativeRuntime) return;
   await subscribeNativeEvents({
     onAction: applyExternalAction,
     onMediaUpdate: updateMediaConnect,
     onVolume: updateVolume,
-    onTimerElapsed: () => {
-      if (timer.phase !== "running") return;
-      timer = reconcileTimer(timer);
-      if (timer.phase !== "finished") {
-        timer = { ...timer, phase: "finished", endAt: null, pausedRemainingMs: 0 };
-      }
-      finishTimer();
-    },
     onFullscreenChanged: (payload) => {
       fullscreen = payload.fullscreen;
       if (!fullscreen) fullscreenOverride = false;
@@ -208,7 +153,6 @@ async function startApplication(): Promise<void> {
     return null;
   });
   if (initialMedia) updateMediaConnect(initialMedia);
-  syncNativeTimer();
 }
 
 function configurePreview(mode: PreviewMode): void {
@@ -224,16 +168,10 @@ function configurePreview(mode: PreviewMode): void {
       content = "media";
       previewShell = "compact";
       break;
-    case "compact-carousel":
-      timer = {
-        phase: "running",
-        durationMs: 25 * 60_000,
-        endAt: Date.now() + 18 * 60_000 + 42_000,
-        pausedRemainingMs: 0,
-      };
-      carouselActiveCard = "media";
+    case "expanded-home":
       content = "media";
-      previewShell = "compact";
+      expandedPanel = "home";
+      previewShell = "expanded";
       break;
     case "expanded-media":
       content = "media";
@@ -245,20 +183,8 @@ function configurePreview(mode: PreviewMode): void {
       expandedPanel = "settings";
       previewShell = "expanded";
       break;
-    case "timer-finished":
-      timer = {
-        phase: "finished",
-        durationMs: 25 * 60_000,
-        endAt: null,
-        pausedRemainingMs: 0,
-      };
-      content = "timer-finished";
-      expandedPanel = "timer-finished";
-      previewShell = "expanded";
-      break;
   }
   void setShell(previewShell, false, true);
-  scheduleTimerTick();
   scheduleMediaProgressTick();
 }
 
@@ -295,102 +221,8 @@ function onExpandedActivity(): void {
   resetExpandedExpiry();
 }
 
-function onCarouselWheel(event: WheelEvent): void {
-  if (shell !== "compact" || event.ctrlKey) return;
-  const target = event.target as HTMLElement;
-  if (!target.closest<HTMLElement>("[data-carousel='true']")) return;
-  const cards = getCarouselCards();
-  if (cards.length < 2) return;
-
-  const delta = normalizedWheelDelta(event);
-  if (delta === 0) return;
-  event.preventDefault();
-  scheduleCarouselWheelUnlock();
-  if (carouselWheelLocked) return;
-  if (
-    carouselWheelAccumulator !== 0 &&
-    Math.sign(delta) !== Math.sign(carouselWheelAccumulator)
-  ) {
-    carouselWheelAccumulator = 0;
-  }
-  carouselWheelAccumulator += delta;
-  if (Math.abs(carouselWheelAccumulator) < CAROUSEL_WHEEL_THRESHOLD_PX) return;
-
-  const direction: CarouselDirection = carouselWheelAccumulator > 0 ? "next" : "previous";
-  carouselWheelAccumulator = 0;
-  carouselWheelLocked = true;
-  switchCarousel(direction);
-}
-
-function scheduleCarouselWheelUnlock(): void {
-  if (carouselWheelUnlockId !== null) window.clearTimeout(carouselWheelUnlockId);
-  carouselWheelUnlockId = window.setTimeout(() => {
-    carouselWheelUnlockId = null;
-    carouselWheelAccumulator = 0;
-    carouselWheelLocked = false;
-  }, CAROUSEL_WHEEL_RESET_MS);
-}
-
-function resetCarouselWheelGesture(): void {
-  if (carouselWheelUnlockId !== null) window.clearTimeout(carouselWheelUnlockId);
-  carouselWheelUnlockId = null;
-  carouselWheelAccumulator = 0;
-  carouselWheelLocked = false;
-}
-
-function normalizedWheelDelta(event: WheelEvent): number {
-  const rawDelta =
-    Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return rawDelta * 16;
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-    return rawDelta * SHELL_GEOMETRY.compact.height;
-  }
-  return rawDelta;
-}
-
-function onCarouselPointerEnter(): void {
-  carouselPointerInside = true;
-  clearCarouselAutoRotation();
-}
-
-function onCarouselPointerLeave(): void {
-  carouselPointerInside = false;
-  resetCarouselWheelGesture();
-  resetCarouselAutoRotation();
-}
-
-function onCarouselFocusIn(event: FocusEvent): void {
-  const target = event.target as HTMLElement;
-  if (!target.closest<HTMLElement>(".compact")) return;
-  carouselFocusInside = true;
-  clearCarouselAutoRotation();
-}
-
-function onCarouselFocusOut(): void {
-  queueMicrotask(() => {
-    const activeElement = document.activeElement;
-    carouselFocusInside =
-      activeElement instanceof Element && Boolean(activeElement.closest(".compact"));
-    if (!carouselFocusInside) resetCarouselAutoRotation();
-  });
-}
-
 function onKeyDown(event: KeyboardEvent): void {
   resetExpandedExpiry();
-  if (
-    shell === "compact" &&
-    (event.key === "ArrowDown" ||
-      event.key === "ArrowRight" ||
-      event.key === "ArrowUp" ||
-      event.key === "ArrowLeft")
-  ) {
-    const direction: CarouselDirection =
-      event.key === "ArrowDown" || event.key === "ArrowRight" ? "next" : "previous";
-    if (switchCarousel(direction)) {
-      event.preventDefault();
-      return;
-    }
-  }
   if (event.key === "Escape" && shell === "expanded") {
     event.preventDefault();
     collapse();
@@ -408,7 +240,6 @@ async function runAction(action: string, value?: string): Promise<void> {
       reconcilePresentation();
       break;
     case "open-media":
-      carouselActiveCard = "media";
       content = "media";
       expandedPanel = "media";
       await setShell("expanded");
@@ -417,40 +248,6 @@ async function runAction(action: string, value?: string): Promise<void> {
       expandedPanel = "settings";
       content = "settings";
       await setShell("expanded");
-      break;
-    case "start-timer":
-      startTimer(Number(value));
-      break;
-    case "toggle-timer":
-      timer = timer.phase === "running" ? pauseTimer(timer) : resumeTimer(timer);
-      persistTimer();
-      carouselActiveCard = "timer";
-      content = timer.phase === "finished" ? "timer-finished" : "timer";
-      render();
-      scheduleTimerTick();
-      break;
-    case "cancel-timer":
-      timer = { ...EMPTY_TIMER };
-      persistTimer();
-      demoOverride = null;
-      expandedPanel = "home";
-      reconcilePresentation();
-      break;
-    case "restart-timer":
-      timer = restartTimer(timer);
-      persistTimer();
-      carouselActiveCard = "timer";
-      content = "timer";
-      expandedPanel = "timer";
-      await setShell("expanded");
-      scheduleTimerTick();
-      break;
-    case "dismiss-finished":
-      timer = { ...EMPTY_TIMER };
-      persistTimer();
-      demoOverride = null;
-      expandedPanel = "home";
-      reconcilePresentation();
       break;
     case "media-previous":
     case "media-toggle":
@@ -518,10 +315,7 @@ function applyExternalAction(action: string): void {
     case "demo:idle":
       manuallyHidden = false;
       demoOverride = "idle";
-      timer = { ...EMPTY_TIMER };
-      persistTimer();
       media = null;
-      carouselActiveCard = null;
       reconcilePresentation();
       break;
     case "demo:media":
@@ -549,23 +343,6 @@ function applyExternalAction(action: string): void {
       manuallyHidden = false;
       demoOverride = "volume";
       updateVolume({ level: 0.68, muted: false });
-      break;
-    case "demo:timer-running":
-      manuallyHidden = false;
-      demoOverride = "timer";
-      startTimer(5);
-      break;
-    case "demo:timer-finished":
-      manuallyHidden = false;
-      demoOverride = "timer-finished";
-      timer = {
-        phase: "finished",
-        durationMs: 25 * 60_000,
-        endAt: null,
-        pausedRemainingMs: 0,
-      };
-      persistTimer();
-      finishTimer();
       break;
   }
 }
@@ -607,7 +384,6 @@ function updateMedia(payload: NativeMediaPayload | null, fromDemo = false): void
   const trackChanged = Boolean(next && mediaIdentity !== lastMediaIdentity);
   media = next;
   lastMediaIdentity = mediaIdentity;
-  reconcileActiveCarouselCard();
   if (fromDemo) mediaConnection = { status: "ready", sessionCount: 1 };
   scheduleMediaProgressTick();
   if (next && trackChanged) {
@@ -630,60 +406,6 @@ function updateVolume(payload: NativeVolumePayload): void {
   if (manuallyHidden) return;
   reconcilePresentation();
   scheduleVisibleTransientExpiry();
-}
-
-function startTimer(minutes: number): void {
-  if (!Number.isFinite(minutes) || minutes <= 0) return;
-  dismissCarouselTransients();
-  demoOverride = demoOverride === "timer" ? demoOverride : null;
-  timer = createTimer(minutes);
-  persistTimer();
-  carouselActiveCard = "timer";
-  content = "timer";
-  expandedPanel = "timer";
-  void setShell("expanded");
-  scheduleTimerTick();
-}
-
-function finishTimer(): void {
-  const preserveExpandedPanel =
-    shell === "expanded" && expandedPanel !== "timer" && expandedPanel !== "timer-finished";
-  dismissCarouselTransients();
-  timer = {
-    ...timer,
-    phase: "finished",
-    endAt: null,
-    pausedRemainingMs: 0,
-  };
-  persistTimer();
-  content = "timer-finished";
-  if (!preserveExpandedPanel) expandedPanel = "timer-finished";
-  void setShell(
-    manuallyHidden || shouldHideForFullscreen()
-      ? "hidden"
-      : shell === "expanded"
-        ? "expanded"
-        : "compact",
-  );
-  playTimerTone();
-  scheduleTimerTick();
-}
-
-function scheduleTimerTick(): void {
-  if (timerTickId !== null) {
-    window.clearInterval(timerTickId);
-    timerTickId = null;
-  }
-  if (timer.phase !== "running") return;
-  timerTickId = window.setInterval(() => {
-    const next = reconcileTimer(timer);
-    if (next.phase === "finished") {
-      timer = next;
-      finishTimer();
-      return;
-    }
-    if (shell !== "hidden") updateTimerRemaining(app, timer, settings.language);
-  }, 500);
 }
 
 function scheduleMediaProgressTick(): void {
@@ -709,103 +431,10 @@ function refreshMediaProgress(): void {
   updateMediaProgress(app, media, settings.language);
 }
 
-function getCarouselCards(): CarouselCardKind[] {
-  return availableCarouselCards(
-    media !== null,
-    timer.phase === "running" || timer.phase === "paused",
-  );
-}
-
-function reconcileActiveCarouselCard(
-  preferred: CarouselCardKind | null = null,
-): CarouselCardKind | null {
-  const cards = getCarouselCards();
-  const fallback =
-    preferred ??
-    (timer.phase === "running" || timer.phase === "paused" ? "timer" : null);
-  carouselActiveCard = reconcileCarouselCard(cards, carouselActiveCard, fallback);
-  return carouselActiveCard;
-}
-
-function switchCarousel(direction: CarouselDirection): boolean {
-  if (shell !== "compact") return false;
-  const cards = getCarouselCards();
-  if (
-    cards.length < 2 ||
-    (content !== "media" && content !== "timer") ||
-    !cards.includes(content)
-  ) {
-    return false;
-  }
-  const next = stepCarouselCard(cards, content, direction);
-  if (!next || next === content) return false;
-
-  dismissCarouselTransients();
-  carouselActiveCard = next;
-  carouselMotion = direction;
-  content = next;
-  clearCarouselAutoRotation();
-  render();
-  return true;
-}
-
-function dismissCarouselTransients(): void {
-  volumeVisibleUntil = 0;
-  mediaFlashUntil = 0;
-  firstRun = false;
-  if (demoOverride === "volume") demoOverride = null;
-  clearTransientExpiry();
-}
-
-function carouselCanAutoRotate(): boolean {
-  const cards = getCarouselCards();
-  const now = Date.now();
-  return (
-    shell === "compact" &&
-    cards.length > 1 &&
-    carouselActiveCard !== null &&
-    content === carouselActiveCard &&
-    now >= volumeVisibleUntil &&
-    now >= mediaFlashUntil &&
-    !firstRun &&
-    !carouselPointerInside &&
-    !carouselFocusInside &&
-    pendingMediaCommand === null &&
-    !document.hidden &&
-    previewMode === null &&
-    !reducedMotion.matches
-  );
-}
-
-function syncCarouselAutoRotation(): void {
-  if (!carouselCanAutoRotate()) {
-    clearCarouselAutoRotation();
-    return;
-  }
-  if (carouselAdvanceId !== null) return;
-  carouselAdvanceId = window.setTimeout(() => {
-    carouselAdvanceId = null;
-    if (!carouselCanAutoRotate()) return;
-    switchCarousel("next");
-  }, CAROUSEL_ADVANCE_MS);
-}
-
-function resetCarouselAutoRotation(): void {
-  clearCarouselAutoRotation();
-  syncCarouselAutoRotation();
-}
-
-function clearCarouselAutoRotation(): void {
-  if (carouselAdvanceId === null) return;
-  window.clearTimeout(carouselAdvanceId);
-  carouselAdvanceId = null;
-}
-
 function reconcilePresentation(
   animate = !reducedMotion.matches,
   preserveExpanded = true,
 ): void {
-  timer = reconcileTimer(timer);
   if (manuallyHidden) {
     void setShell("hidden", animate);
     return;
@@ -814,23 +443,15 @@ function reconcilePresentation(
     void setShell("hidden", animate);
     return;
   }
-  if (timer.phase === "finished") {
-    content = "timer-finished";
-    if (!preserveExpanded || shell !== "expanded") void setShell("compact", animate);
-    else render();
-    return;
-  }
-
   const now = Date.now();
-  const activeCard = reconcileActiveCarouselCard();
   if (demoOverride === "idle") {
     content = "idle";
   } else if (now < volumeVisibleUntil) {
     content = "volume";
   } else if (now < mediaFlashUntil && media) {
     content = "media";
-  } else if (activeCard) {
-    content = activeCard;
+  } else if (media) {
+    content = "media";
   } else if (firstRun) {
     content = "welcome";
   } else {
@@ -847,8 +468,7 @@ function reconcilePresentation(
 }
 
 function shouldHideForFullscreen(): boolean {
-  if (!fullscreen || fullscreenOverride || !settings.hideInFullscreen) return false;
-  return !(timer.phase === "finished" && settings.timerBreaksFullscreen);
+  return fullscreen && !fullscreenOverride && settings.hideInFullscreen;
 }
 
 function collapse(): void {
@@ -865,7 +485,6 @@ async function setShell(
   const previous = shell;
   const enteredExpanded = previous !== "expanded" && next === "expanded";
   if (next !== "expanded") clearExpandedExpiry();
-  if (next !== "compact") resetCarouselWheelGesture();
   if (previous !== next || forceNative) shellRevision += 1;
   const revision = shellRevision;
   animateNextShellContent = animated && previous !== next;
@@ -1062,7 +681,6 @@ function toggleSetting(settingName?: string): void {
 }
 
 function panelForContent(kind: ContentKind): ExpandedPanel {
-  if (kind === "timer" || kind === "timer-finished") return kind;
   if (kind === "media") return "media";
   if (kind === "settings") return "settings";
   return "home";
@@ -1070,7 +688,6 @@ function panelForContent(kind: ContentKind): ExpandedPanel {
 
 function render(): void {
   const now = Date.now();
-  const carouselCards = getCarouselCards();
   const vm: AppViewModel = {
     shell,
     content,
@@ -1078,13 +695,9 @@ function render(): void {
     media,
     mediaConnection,
     volume,
-    timer,
     settings,
     pendingMediaCommand,
     mediaCommandFeedback,
-    carouselCards,
-    carouselActiveCard,
-    carouselMotion,
     showInlineVolume: now < volumeVisibleUntil,
     animateContent: animateNextShellContent,
     motionDisabled: reducedMotion.matches,
@@ -1092,45 +705,5 @@ function render(): void {
   };
   animateNextShellContent = false;
   renderApp(app, vm);
-  carouselMotion = null;
-  syncCarouselAutoRotation();
   scheduleMediaProgressTick();
-}
-
-function playTimerTone(): void {
-  if (!settings.soundsEnabled) return;
-  try {
-    const AudioContextCtor = window.AudioContext;
-    const context = new AudioContextCtor();
-    const gain = context.createGain();
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.055, context.currentTime + 0.025);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.42);
-    gain.connect(context.destination);
-    [660, 880].forEach((frequency, index) => {
-      const oscillator = context.createOscillator();
-      oscillator.type = "sine";
-      oscillator.frequency.value = frequency;
-      oscillator.connect(gain);
-      oscillator.start(context.currentTime + index * 0.1);
-      oscillator.stop(context.currentTime + 0.38);
-    });
-    window.setTimeout(() => void context.close(), 600);
-  } catch {
-    // Sound is optional and must never interrupt the timer state.
-  }
-}
-
-function persistTimer(): void {
-  saveTimer(timer);
-  syncNativeTimer();
-}
-
-function syncNativeTimer(): void {
-  if (!nativeRuntime || previewMode) return;
-  const endAtMs =
-    timer.phase === "running" && timer.endAt !== null ? Math.ceil(timer.endAt) : null;
-  void scheduleNativeTimer(endAtMs, settings.timerBreaksFullscreen).catch((error: unknown) =>
-    console.warn("Unable to schedule the native timer", error),
-  );
 }

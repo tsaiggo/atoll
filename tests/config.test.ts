@@ -18,6 +18,7 @@ const { DEFAULT_SETTINGS, loadSettings, saveSettings } = await import(
 moduleHooks.deregister();
 
 const SETTINGS_KEY = "atoll.settings.v1";
+const RETIRED_TIMER_KEY = "atoll.timer.v1";
 
 class MemoryStorage implements Storage {
   readonly #values = new Map<string, string>();
@@ -94,4 +95,28 @@ test("falls back to English for an unsupported persisted language", () => {
   );
 
   assert.equal(loadSettings().language, "en");
+});
+
+test("cleans retired timer data and settings during upgrade", () => {
+  storage.setItem(RETIRED_TIMER_KEY, JSON.stringify({ endAt: 1_700_000_000_000 }));
+  storage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({
+      ...DEFAULT_SETTINGS,
+      animationsEnabled: true,
+      soundsEnabled: true,
+      timerBreaksFullscreen: true,
+    }),
+  );
+
+  loadSettings();
+
+  const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<
+    string,
+    unknown
+  >;
+  assert.equal(storage.getItem(RETIRED_TIMER_KEY), null);
+  assert.equal("animationsEnabled" in stored, false);
+  assert.equal("soundsEnabled" in stored, false);
+  assert.equal("timerBreaksFullscreen" in stored, false);
 });

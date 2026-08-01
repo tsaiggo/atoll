@@ -3,7 +3,6 @@ mod connect;
 mod fullscreen;
 mod runtime;
 mod shell;
-mod timer;
 mod volume;
 
 use tauri::Manager;
@@ -42,8 +41,7 @@ pub fn run() {
             app_controls::set_menu_language,
             connect::media_command,
             connect::media_status,
-            fullscreen::is_fullscreen_active,
-            timer::schedule_timer
+            fullscreen::is_fullscreen_active
         ])
         .run(tauri::generate_context!())
         .expect("Atoll could not start");

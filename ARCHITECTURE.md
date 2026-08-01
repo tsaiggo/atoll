@@ -16,8 +16,6 @@ domain.ts               纯领域模型、数据规范化和时间计算
 config.ts               全局设置及其 localStorage 持久化
 features/
   media/commands.ts     媒体命令规则、乐观播放状态与媒体身份
-  surface/carousel.ts   Compact 卡片列表、选择校正与循环切换规则
-  timer/storage.ts      计时器 localStorage 读写和损坏数据回退
 platform/native.ts      唯一的 Tauri invoke/listen 封装
 shell/geometry.ts       Reef、Compact、Expanded 的窗口几何常量
 ui/
@@ -51,7 +49,6 @@ connect/
     windows_gsmtc.rs  内置 Windows GSMTC Provider
 volume.rs        Windows Core Audio 音量监听
 fullscreen.rs    前台全屏窗口检测
-timer.rs         不依赖 WebView 活跃状态的后台计时调度
 ```
 
 Rust 模块应通过 `runtime.rs` 共享状态，不应反向依赖 `lib.rs` 中的实现细节。`lib.rs` 只负责装配。
@@ -95,7 +92,7 @@ domain
 3. `platform/native.ts` 是前端唯一允许直接使用 `invoke` 和 `listen` 的文件。
 4. `domain.ts` 保持纯净，可在没有浏览器和 Windows 的环境中测试。
 5. 模块不得回头导入上层协调器。尤其禁止 `ui -> main`、`features -> main` 和原生子模块 `-> lib`。
-6. 跨模块仅共享明确的类型或函数；不要新增隐式单例、重复计时器或第二套窗口状态。
+6. 跨模块仅共享明确的类型或函数；不要新增隐式单例、重复状态调度器或第二套窗口状态。
 7. 窗口尺寸只从 `SHELL_GEOMETRY` 读取。修改尺寸时还必须核对 `tauri.conf.json` 的初始窗口、CSS 外形和 Rust 窗口区域。
 
 ## IPC 契约
@@ -109,7 +106,6 @@ domain
 | `set_window_shell` | `NativeShellRequest` | `void` |
 | `show_context_menu` | 无 | `void` |
 | `media_command` | `command`, `sessionRevision` | `boolean` |
-| `schedule_timer` | `endAtMs`, `breakFullscreen` | `void` |
 
 事件由 Rust 发往前端：
 
@@ -118,7 +114,6 @@ domain
 | `atoll-action` | `string` |
 | `media-update` | `NativeMediaUpdatePayload` |
 | `system-volume` | `NativeVolumePayload` |
-| `timer-elapsed` | `boolean` |
 | `fullscreen-changed` | `{ fullscreen: boolean }` |
 
 这些字符串和 payload 是跨语言 ABI。新增或修改契约时，应同时完成：Rust command/event 与序列化类型、`domain.ts` 中的 DTO、`platform/native.ts` 封装，以及调用方验证。业务层不得直接复制 IPC 字符串。
