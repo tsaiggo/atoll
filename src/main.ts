@@ -1,5 +1,5 @@
 import type { AppViewModel, ExpandedPanel, PreviewMode } from "./app/types";
-import { consumeFirstRun, loadSettings, resetSettings, saveSettings } from "./config";
+import { consumeFirstRun, loadSettings, saveSettings } from "./config";
 import {
   createTimer,
   DEMO_MEDIA,
@@ -36,6 +36,7 @@ import {
   type CarouselDirection,
 } from "./features/surface/carousel";
 import { loadTimer, saveTimer } from "./features/timer/storage";
+import { copyFor, normalizeLanguage } from "./i18n";
 import {
   applyNativeShell,
   getFullscreen,
@@ -43,6 +44,7 @@ import {
   nativeRuntime,
   runNativeMediaCommand,
   scheduleNativeTimer,
+  setNativeMenuLanguage,
   showNativeContextMenu,
   subscribeNativeEvents,
 } from "./platform/native";
@@ -70,6 +72,7 @@ const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const lightColorScheme = window.matchMedia("(prefers-color-scheme: light)");
 
 let settings = loadSettings();
+document.documentElement.lang = settings.language;
 let shell: ShellState = "hidden";
 let lastVisibleShell: Exclude<ShellState, "hidden"> = "reef";
 let content: ContentKind = "idle";
@@ -114,6 +117,7 @@ function isPreviewMode(value: string | null): value is PreviewMode {
     value === "compact-media" ||
     value === "compact-carousel" ||
     value === "expanded-media" ||
+    value === "settings" ||
     value === "timer-finished"
   );
 }
@@ -160,6 +164,9 @@ if (previewMode) {
 async function startApplication(): Promise<void> {
   if (nativeRuntime) {
     fullscreen = await getFullscreen().catch(() => false);
+    await setNativeMenuLanguage(settings.language).catch((error: unknown) =>
+      console.warn("Unable to update the Atoll menu language", error),
+    );
   }
   timer = reconcileTimer(timer);
   if (shouldHideForFullscreen()) {
@@ -231,6 +238,11 @@ function configurePreview(mode: PreviewMode): void {
     case "expanded-media":
       content = "media";
       expandedPanel = "media";
+      previewShell = "expanded";
+      break;
+    case "settings":
+      content = "settings";
+      expandedPanel = "settings";
       previewShell = "expanded";
       break;
     case "timer-finished":
@@ -453,8 +465,15 @@ async function runAction(action: string, value?: string): Promise<void> {
       saveSettings(settings);
       render();
       break;
-    case "reset-settings":
-      settings = resetSettings();
+    case "set-language":
+      settings = { ...settings, language: normalizeLanguage(value) };
+      saveSettings(settings);
+      document.documentElement.lang = settings.language;
+      if (nativeRuntime) {
+        await setNativeMenuLanguage(settings.language).catch((error: unknown) =>
+          console.warn("Unable to update the Atoll menu language", error),
+        );
+      }
       render();
       break;
     case "hide":
@@ -663,7 +682,7 @@ function scheduleTimerTick(): void {
       finishTimer();
       return;
     }
-    if (shell !== "hidden") updateTimerRemaining(app, timer);
+    if (shell !== "hidden") updateTimerRemaining(app, timer, settings.language);
   }, 500);
 }
 
@@ -687,7 +706,7 @@ function scheduleMediaProgressTick(): void {
 }
 
 function refreshMediaProgress(): void {
-  updateMediaProgress(app, media);
+  updateMediaProgress(app, media, settings.language);
 }
 
 function getCarouselCards(): CarouselCardKind[] {
@@ -754,7 +773,6 @@ function carouselCanAutoRotate(): boolean {
     pendingMediaCommand === null &&
     !document.hidden &&
     previewMode === null &&
-    settings.animationsEnabled &&
     !reducedMotion.matches
   );
 }
@@ -784,7 +802,7 @@ function clearCarouselAutoRotation(): void {
 }
 
 function reconcilePresentation(
-  animate = settings.animationsEnabled && !reducedMotion.matches,
+  animate = !reducedMotion.matches,
   preserveExpanded = true,
 ): void {
   timer = reconcileTimer(timer);
@@ -836,12 +854,12 @@ function shouldHideForFullscreen(): boolean {
 function collapse(): void {
   clearExpandedExpiry();
   if (content === "settings") content = "idle";
-  reconcilePresentation(settings.animationsEnabled && !reducedMotion.matches, false);
+  reconcilePresentation(!reducedMotion.matches, false);
 }
 
 async function setShell(
   next: ShellState,
-  animated = settings.animationsEnabled && !reducedMotion.matches,
+  animated = !reducedMotion.matches,
   forceNative = false,
 ): Promise<void> {
   const previous = shell;
@@ -987,7 +1005,7 @@ async function sendMediaCommand(command: MediaCommand): Promise<void> {
   const identity = mediaIdentityFor(current);
   const previousPlaying = current.playing;
   pendingMediaCommand = command;
-  setMediaCommandFeedback(commandPendingMessage(command, current), false);
+  setMediaCommandFeedback(commandPendingMessage(command, current, settings.language), false);
   if (command === "toggle") media = optimisticPlaybackToggle(current);
   render();
 
@@ -1010,7 +1028,7 @@ async function sendMediaCommand(command: MediaCommand): Promise<void> {
 
   pendingMediaCommand = null;
   if (!accepted && sameTarget) {
-    setMediaCommandFeedback("Control unavailable", true, 1600);
+    setMediaCommandFeedback(copyFor(settings.language).media.controlUnavailable, true, 1600);
   } else {
     setMediaCommandFeedback(null);
   }
@@ -1037,16 +1055,8 @@ function setMediaCommandFeedback(
 }
 
 function toggleSetting(settingName?: string): void {
-  if (!settingName) return;
-  if (settingName === "animationsEnabled") {
-    settings = { ...settings, animationsEnabled: !settings.animationsEnabled };
-  } else if (settingName === "soundsEnabled") {
-    settings = { ...settings, soundsEnabled: !settings.soundsEnabled };
-  } else if (settingName === "hideInFullscreen") {
-    settings = { ...settings, hideInFullscreen: !settings.hideInFullscreen };
-  } else if (settingName === "timerBreaksFullscreen") {
-    settings = { ...settings, timerBreaksFullscreen: !settings.timerBreaksFullscreen };
-  }
+  if (settingName !== "hideInFullscreen") return;
+  settings = { ...settings, hideInFullscreen: !settings.hideInFullscreen };
   saveSettings(settings);
   reconcilePresentation();
 }
@@ -1077,7 +1087,7 @@ function render(): void {
     carouselMotion,
     showInlineVolume: now < volumeVisibleUntil,
     animateContent: animateNextShellContent,
-    motionDisabled: !settings.animationsEnabled || reducedMotion.matches,
+    motionDisabled: reducedMotion.matches,
     now,
   };
   animateNextShellContent = false;

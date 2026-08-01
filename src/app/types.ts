@@ -20,6 +20,7 @@ export type PreviewMode =
   | "compact-media"
   | "compact-carousel"
   | "expanded-media"
+  | "settings"
   | "timer-finished";
 
 export interface AppViewModel {

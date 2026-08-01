@@ -8,6 +8,7 @@ import {
   type MediaStatus,
 } from "../domain";
 import { icon } from "../icons";
+import { copyFor, type UiLanguage } from "../i18n";
 import type { AppViewModel } from "../app/types";
 import { escapeCssUrl, escapeHtml } from "./escape";
 
@@ -29,17 +30,23 @@ export function mediaButton(
   iconName: "previous" | "play" | "pause" | "next",
   label: string,
   enabled: boolean,
+  language: UiLanguage,
   primary = false,
   commandPending = false,
   isPending = false,
 ): string {
+  const accessibleLabel = isPending ? copyFor(language).actions.working(label) : label;
   return `
-    <button class="media-button ${primary ? "media-button--primary" : ""} ${isPending ? "is-pending" : ""}" type="button" data-action="${action}" aria-label="${isPending ? `${label}, working` : label}" aria-busy="${isPending}" ${enabled ? "" : "disabled"} ${commandPending ? 'aria-disabled="true"' : ""}>
+    <button class="media-button ${primary ? "media-button--primary" : ""} ${isPending ? "is-pending" : ""}" type="button" data-action="${action}" aria-label="${accessibleLabel}" aria-busy="${isPending}" ${enabled ? "" : "disabled"} ${commandPending ? 'aria-disabled="true"' : ""}>
       ${icon(iconName)}
     </button>`;
 }
 
-export function renderMediaProgress(current: MediaStatus, now: number): string {
+export function renderMediaProgress(
+  current: MediaStatus,
+  now: number,
+  language: UiLanguage,
+): string {
   if (current.positionMs === undefined || current.durationMs === undefined || current.durationMs <= 0) {
     return "";
   }
@@ -47,23 +54,31 @@ export function renderMediaProgress(current: MediaStatus, now: number): string {
   const ratio = Math.min(1, Math.max(0, position / current.durationMs));
   const elapsedSeconds = Math.floor(position / 1000);
   const durationSeconds = Math.floor(current.durationMs / 1000);
+  const copy = copyFor(language).media;
+  const elapsed = formatPlaybackTime(position);
+  const duration = formatPlaybackTime(current.durationMs);
   return `
     <div class="media-progress">
-      <span class="media-progress__track" role="progressbar" aria-label="Playback progress" aria-valuemin="0" aria-valuemax="${durationSeconds}" aria-valuenow="${elapsedSeconds}" aria-valuetext="${formatPlaybackTime(position)} of ${formatPlaybackTime(current.durationMs)}">
+      <span class="media-progress__track" role="progressbar" aria-label="${copy.progress}" aria-valuemin="0" aria-valuemax="${durationSeconds}" aria-valuenow="${elapsedSeconds}" aria-valuetext="${copy.progressValue(elapsed, duration)}">
         <span class="media-progress__fill" data-media-progress style="transform:scaleX(${ratio})"></span>
       </span>
-      <span class="media-progress__time" aria-hidden="true"><span data-media-elapsed>${formatPlaybackTime(position)}</span><span>${formatPlaybackTime(current.durationMs)}</span></span>
+      <span class="media-progress__time" aria-hidden="true"><span data-media-elapsed>${elapsed}</span><span>${duration}</span></span>
     </div>`;
 }
 
-export function timerPresetButton(minutes: number): string {
-  return `<button type="button" data-action="start-timer" data-value="${minutes}">${minutes} min</button>`;
+export function timerPresetButton(minutes: number, language: UiLanguage): string {
+  return `<button type="button" data-action="start-timer" data-value="${minutes}">${copyFor(language).timer.minutes(minutes)}</button>`;
 }
 
-export function renderCover(current: MediaStatus | null, className: string): string {
+export function renderCover(
+  current: MediaStatus | null,
+  className: string,
+  language: UiLanguage,
+): string {
   const artwork = current?.artworkDataUrl;
   if (artwork?.startsWith("data:image/")) {
-    return `<span class="${className} cover--image" style="background-image:url('${escapeCssUrl(artwork)}')" role="img" aria-label="Album artwork for ${escapeHtml(current?.title ?? "current media")}"></span>`;
+    const title = current?.title ?? copyFor(language).media.noMedia;
+    return `<span class="${className} cover--image" style="background-image:url('${escapeCssUrl(artwork)}')" role="img" aria-label="${escapeHtml(copyFor(language).media.coverAlt(title))}"></span>`;
   }
   return `<span class="${className} cover--brand" aria-hidden="true">${icon("atoll")}</span>`;
 }
@@ -71,60 +86,74 @@ export function renderCover(current: MediaStatus | null, className: string): str
 export function renderInlineVolume(vm: AppViewModel): string {
   if (!vm.showInlineVolume) return "";
   const percentage = Math.round(vm.volume.level * 100);
-  return `<span class="inline-volume" role="meter" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${vm.volume.muted ? `Muted, ${percentage} percent` : `${percentage} percent`}">${icon(vm.volume.muted ? "volumeMute" : "volume")}<span class="inline-volume__track" aria-hidden="true"><span style="transform:scaleX(${vm.volume.level})"></span></span><b>${percentage}</b></span>`;
+  const copy = copyFor(vm.settings.language).volume;
+  return `<span class="inline-volume" role="meter" aria-label="${copy.title}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${copy.accessibleValue(percentage, vm.volume.muted)}">${icon(vm.volume.muted ? "volumeMute" : "volume")}<span class="inline-volume__track" aria-hidden="true"><span style="transform:scaleX(${vm.volume.level})"></span></span><b>${percentage}</b></span>`;
 }
 
 export function compactAccessibleLabel(vm: AppViewModel): string {
-  const expand = "Expand Atoll";
+  const copy = copyFor(vm.settings.language);
+  const expand = copy.shell.expandAtoll;
   switch (vm.content) {
     case "welcome":
-      return `Atoll is ready. ${expand}`;
+      return `${copy.shell.readyTitle}. ${expand}`;
     case "media": {
-      const title = vm.media?.title ?? "No active media";
-      const artist = vm.media?.artist ? ` by ${vm.media.artist}` : "";
-      const playback = vm.media ? (vm.media.playing ? "playing" : "paused") : "waiting for a session";
-      return `${title}${artist}, ${playback}. ${expand}`;
+      const title = vm.media?.title ?? copy.media.idleTitle;
+      const playback = vm.media
+        ? vm.media.playing
+          ? copy.media.playing
+          : copy.media.paused
+        : copy.media.waiting;
+      return copy.media.accessibleStatus(title, vm.media?.artist ?? null, playback, expand);
     }
     case "volume": {
       const percentage = Math.round(vm.volume.level * 100);
-      return `${vm.volume.muted ? "Muted" : `Volume ${percentage} percent`}. ${expand}`;
+      return `${copy.volume.accessibleValue(percentage, vm.volume.muted)}. ${expand}`;
     }
     case "timer":
-      return `Focus timer, ${formatDuration(remainingMs(vm.timer, vm.now))} remaining, ${vm.timer.phase === "paused" ? "paused" : "running"}. ${expand}`;
+      return vm.timer.phase === "paused"
+        ? copy.timer.accessiblePaused(formatDuration(remainingMs(vm.timer, vm.now)), expand)
+        : copy.timer.accessibleRunning(formatDuration(remainingMs(vm.timer, vm.now)), "");
     case "timer-finished":
-      return `Focus timer complete. ${expand}`;
+      return copy.timer.accessibleComplete(expand);
     default:
       return `Atoll. ${expand}`;
   }
 }
 
 export function homeStatusLine(vm: AppViewModel): string {
-  if (vm.timer.phase === "running") return `${formatDuration(remainingMs(vm.timer, vm.now))} remaining`;
-  if (vm.media?.playing) return "Media is playing";
-  return "Your status, surfaced.";
+  const copy = copyFor(vm.settings.language).shell;
+  if (vm.timer.phase === "running") {
+    return copy.remaining(formatDuration(remainingMs(vm.timer, vm.now)));
+  }
+  if (vm.media?.playing) return copy.mediaPlaying;
+  return copy.tagline;
 }
 
-export function mediaEmptyCopy(mediaConnection: MediaConnection): { title: string; detail: string } {
+export function mediaEmptyCopy(
+  mediaConnection: MediaConnection,
+  language: UiLanguage,
+): { title: string; detail: string } {
+  const copy = copyFor(language).media;
   switch (mediaConnection.status) {
     case "checking":
       return {
-        title: "Checking Windows media…",
-        detail: "Looking for connected players",
+        title: copy.checkingTitle,
+        detail: copy.checkingDetail,
       };
     case "metadata_unavailable":
       return {
-        title: "Player connected",
-        detail: "It isn’t sharing track details with Windows",
+        title: copy.metadataTitle,
+        detail: copy.metadataDetail,
       };
     case "unavailable":
       return {
-        title: "Media controls unavailable",
-        detail: "Atoll couldn’t reach Windows media sessions",
+        title: copy.unavailableTitle,
+        detail: copy.unavailableDetail,
       };
     default:
       return {
-        title: "No active media",
-        detail: "Start playback in QQ Music or another player",
+        title: copy.idleTitle,
+        detail: copy.idleDetail,
       };
   }
 }

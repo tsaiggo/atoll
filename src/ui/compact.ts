@@ -2,6 +2,7 @@ import type { AppViewModel } from "../app/types";
 import type { CarouselCardKind } from "../features/surface/carousel";
 import { formatDuration, remainingMs } from "../domain";
 import { icon } from "../icons";
+import { copyFor } from "../i18n";
 import { shellGeometryStyle } from "../shell/geometry";
 import { escapeHtml } from "./escape";
 import { compactAccessibleLabel, renderCover } from "./primitives";
@@ -31,13 +32,14 @@ function renderCompactMedia(
   carousel: CompactCarouselPresentation,
 ): string {
   if (!vm.media) return "";
+  const copy = copyFor(vm.settings.language);
   const current = vm.media;
   const commandPending = vm.pendingMediaCommand !== null;
-  const toggleLabel = current.playing ? "Pause" : "Play";
+  const toggleLabel = current.playing ? copy.actions.pause : copy.actions.play;
   return `
-    <div class="atoll-shell compact compact--media${carousel.className}${motionClass}" ${shellGeometryStyle("compact")} ${carousel.attribute} role="group" aria-label="Current media controls${escapeHtml(carousel.labelSuffix)}">
-      <button class="compact-media__open" type="button" data-action="open-media" aria-label="Open media controls for ${escapeHtml(current.title)}">
-        ${renderCover(current, "cover cover--compact")}
+    <div class="atoll-shell compact compact--media${carousel.className}${motionClass}" ${shellGeometryStyle("compact")} ${carousel.attribute} role="group" aria-label="${escapeHtml(`${copy.media.currentControls}${carousel.labelSuffix}`)}">
+      <button class="compact-media__open" type="button" data-action="open-media" aria-label="${escapeHtml(copy.media.openControlsFor(current.title))}">
+        ${renderCover(current, "cover cover--compact", vm.settings.language)}
         <span class="compact__copy" title="${escapeHtml(`${current.title} — ${current.artist}`)}">
           <strong>${escapeHtml(current.title)}</strong>
           <small>${escapeHtml(current.artist)}</small>
@@ -75,7 +77,10 @@ function compactCarouselPresentation(vm: AppViewModel): CompactCarouselPresentat
   return {
     className: " has-carousel",
     attribute: 'data-carousel="true"',
-    labelSuffix: `. Card ${position} of ${vm.carouselCards.length}. Use the mouse wheel or arrow keys to switch`,
+    labelSuffix: copyFor(vm.settings.language).carousel.position(
+      position,
+      vm.carouselCards.length,
+    ),
     indicator: `<span class="compact-carousel__position" aria-hidden="true">${indicator}</span>`,
   };
 }
@@ -85,20 +90,21 @@ function carouselCardForContent(content: AppViewModel["content"]): CarouselCardK
 }
 
 function renderCompactContent(vm: AppViewModel): string {
+  const copy = copyFor(vm.settings.language);
   switch (vm.content) {
     case "welcome":
       return `
         <span class="mark mark--compact">${icon("atoll")}</span>
         <span class="compact__copy">
-          <strong>Atoll is ready</strong>
-          <small>Click to surface controls</small>
+          <strong>${copy.shell.readyTitle}</strong>
+          <small>${copy.shell.readyDetail}</small>
         </span>`;
     case "media":
       return `
-        ${renderCover(vm.media, "cover cover--compact")}
+        ${renderCover(vm.media, "cover cover--compact", vm.settings.language)}
         <span class="compact__copy">
-          <strong>${escapeHtml(vm.media?.title ?? "No media")}</strong>
-          <small>${escapeHtml(vm.media?.artist ?? "Waiting for a session")}</small>
+          <strong>${escapeHtml(vm.media?.title ?? copy.media.noMedia)}</strong>
+          <small>${escapeHtml(vm.media?.artist ?? copy.media.waitingForSession)}</small>
         </span>
         <span class="compact__status">${icon(vm.media?.playing ? "pause" : "play")}</span>`;
     case "volume": {
@@ -106,29 +112,29 @@ function renderCompactContent(vm: AppViewModel): string {
       return `
         <span class="compact__glyph">${icon(vm.volume.muted ? "volumeMute" : "volume")}</span>
         <span class="volume__stack">
-          <span class="volume__label">${vm.volume.muted ? "Muted" : "Volume"} <strong>${percentage}%</strong></span>
-          <span class="meter" role="meter" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${vm.volume.muted ? `Muted, ${percentage} percent` : `${percentage} percent`}"><span style="transform:scaleX(${vm.volume.level})"></span></span>
+          <span class="volume__label">${vm.volume.muted ? copy.volume.muted : copy.volume.title} <strong>${percentage}%</strong></span>
+          <span class="meter" role="meter" aria-label="${copy.volume.title}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${copy.volume.accessibleValue(percentage, vm.volume.muted)}"><span style="transform:scaleX(${vm.volume.level})"></span></span>
         </span>`;
     }
     case "timer":
       return `
         <span class="compact__glyph compact__glyph--timer">${icon("timer")}</span>
         <span class="compact__copy">
-          <strong>Focus</strong>
-          <small>${vm.timer.phase === "paused" ? "Paused" : "In progress"}</small>
+          <strong>${copy.timer.focus}</strong>
+          <small>${vm.timer.phase === "paused" ? copy.timer.paused : copy.timer.inProgress}</small>
         </span>
         <time class="compact__time" data-timer-remaining>${formatDuration(remainingMs(vm.timer, vm.now))}</time>`;
     case "timer-finished":
       return `
         <span class="compact__glyph compact__glyph--finished">${icon("timer")}</span>
         <span class="compact__copy">
-          <strong>Time’s up</strong>
-          <small>Focus session complete</small>
+          <strong>${copy.timer.timesUp}</strong>
+          <small>${copy.timer.complete}</small>
         </span>
         <span class="compact__status compact__status--finished">${icon("check")}</span>`;
     default:
       return `
         <span class="mark mark--compact">${icon("atoll")}</span>
-        <span class="compact__copy"><strong>Atoll</strong><small>Your status, surfaced.</small></span>`;
+        <span class="compact__copy"><strong>Atoll</strong><small>${copy.shell.tagline}</small></span>`;
   }
 }

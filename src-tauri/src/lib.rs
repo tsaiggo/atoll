@@ -39,6 +39,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             shell::set_window_shell,
             app_controls::show_context_menu,
+            app_controls::set_menu_language,
             connect::media_command,
             connect::media_status,
             fullscreen::is_fullscreen_active,

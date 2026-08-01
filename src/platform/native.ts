@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { MediaCommand } from "../features/media/commands";
+import type { UiLanguage } from "../i18n";
 import type {
   NativeMediaUpdatePayload,
   NativeVolumePayload,
@@ -55,6 +56,10 @@ export function applyNativeShell(request: NativeShellRequest): Promise<void> {
 
 export function showNativeContextMenu(): Promise<void> {
   return invoke("show_context_menu");
+}
+
+export function setNativeMenuLanguage(language: UiLanguage): Promise<void> {
+  return invoke("set_menu_language", { language });
 }
 
 export function runNativeMediaCommand(
