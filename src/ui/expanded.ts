@@ -1,5 +1,4 @@
 import type { AppViewModel } from "../app/types";
-import { formatDuration, remainingMs } from "../domain";
 import { icon } from "../icons";
 import { copyFor } from "../i18n";
 import { shellGeometryStyle } from "../shell/geometry";
@@ -12,7 +11,6 @@ import {
   renderInlineVolume,
   renderMediaProgress,
   settingToggle,
-  timerPresetButton,
 } from "./primitives";
 
 export function renderExpandedShell(vm: AppViewModel): string {
@@ -28,10 +26,6 @@ function renderExpandedPanel(vm: AppViewModel): string {
   switch (vm.expandedPanel) {
     case "media":
       return renderMediaPanel(vm);
-    case "timer":
-      return renderTimerPanel(vm);
-    case "timer-finished":
-      return renderTimerFinishedPanel(vm);
     case "settings":
       return renderSettingsPanel(vm);
     default:
@@ -46,7 +40,7 @@ function renderHomePanel(vm: AppViewModel): string {
     <header class="expanded__header">
       <button class="brand-lockup" type="button" data-action="collapse" aria-label="${copy.shell.collapseAtoll}">
         <span class="mark">${icon("atoll")}</span>
-        <span><strong>Atoll</strong><small${vm.timer.phase === "running" ? ' data-timer-remaining data-timer-remaining-copy="remaining"' : ""}>${homeStatusLine(vm)}</small></span>
+        <span><strong>Atoll</strong><small>${homeStatusLine(vm)}</small></span>
       </button>
       ${renderInlineVolume(vm)}
       <button class="icon-button" type="button" data-action="open-settings" aria-label="${copy.shell.openSettings}">${icon("gear")}</button>
@@ -62,14 +56,6 @@ function renderHomePanel(vm: AppViewModel): string {
           ? `<button class="icon-button icon-button--accent" type="button" data-action="media-toggle" aria-label="${vm.media.playing ? copy.actions.pause : copy.actions.play}" ${vm.media.canPlayPause ? "" : "disabled"} ${vm.pendingMediaCommand !== null ? 'aria-disabled="true"' : ""}>${icon(vm.media.playing ? "pause" : "play")}</button>`
           : ""
       }
-    </div>
-    <div class="home__timer">
-      <span class="section-label">${icon("timer")}<span>${copy.timer.start}</span></span>
-      <div class="timer-presets" role="group" aria-label="${copy.timer.presets}">
-        ${timerPresetButton(5, vm.settings.language)}
-        ${timerPresetButton(10, vm.settings.language)}
-        ${timerPresetButton(25, vm.settings.language)}
-      </div>
     </div>
     <footer class="expanded__footer">
       <span>Ctrl + Shift + Space</span>
@@ -134,44 +120,6 @@ function renderMediaEmptyPanel(vm: AppViewModel): string {
       <span>${vm.mediaConnection.sessionCount > 0 ? copy.media.playerConnected(vm.mediaConnection.sessionCount) : copy.media.supportedPlayers}</span>
       <button class="text-button" type="button" data-action="open-home">${icon("back")}${copy.shell.home}</button>
     </footer>`;
-}
-
-function renderTimerPanel(vm: AppViewModel): string {
-  const copy = copyFor(vm.settings.language);
-  const time = formatDuration(remainingMs(vm.timer, vm.now));
-  return `
-    <header class="timer-hero">
-      <button class="mark mark--button" type="button" data-action="collapse" aria-label="${copy.shell.collapseAtoll}">${icon("timer")}</button>
-      <span class="timer-hero__copy"><small>${vm.timer.phase === "paused" ? copy.timer.focusPaused : copy.timer.focusTimer}</small><time data-timer-remaining>${time}</time></span>
-      <span class="timer-hero__status">${vm.timer.phase === "paused" ? copy.timer.paused : copy.timer.running}</span>
-    </header>
-    <div class="timer-actions">
-      <button class="control-button control-button--primary" type="button" data-action="toggle-timer">
-        ${icon(vm.timer.phase === "running" ? "pause" : "play")}
-        ${vm.timer.phase === "running" ? copy.actions.pause : copy.actions.continue}
-      </button>
-      <button class="control-button" type="button" data-action="restart-timer">${icon("restart")}${copy.actions.restart}</button>
-      <button class="control-button" type="button" data-action="cancel-timer">${icon("close")}${copy.actions.cancel}</button>
-    </div>
-    <footer class="expanded__footer">
-      <span>${copy.timer.accurateTime}</span>
-      <button class="text-button" type="button" data-action="open-home">${icon("back")}${copy.shell.home}</button>
-    </footer>`;
-}
-
-function renderTimerFinishedPanel(vm: AppViewModel): string {
-  const copy = copyFor(vm.settings.language);
-  return `
-    <header class="timer-finished__hero">
-      <span class="finished-mark">${icon("timer")}</span>
-      <span><small>${copy.timer.focusTimer}</small><strong>${copy.timer.timesUp}</strong></span>
-      <span class="finished-check">${icon("check")}</span>
-    </header>
-    <p class="timer-finished__message">${copy.timer.completionMessage}</p>
-    <div class="timer-actions timer-actions--finished">
-      <button class="control-button control-button--primary" type="button" data-action="dismiss-finished">${icon("check")}${copy.actions.stop}</button>
-      <button class="control-button" type="button" data-action="restart-timer">${icon("restart")}${copy.actions.restart}</button>
-    </div>`;
 }
 
 function renderSettingsPanel(vm: AppViewModel): string {

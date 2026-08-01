@@ -5,11 +5,11 @@ primary_target: "src/main.ts"
 related_targets: ["src/styles.css"]
 ---
 
-Scope: Atoll’s Windows top-edge shell, covering Reef, Compact, Expanded, and Timer Finished surfaces. Mode: Operate.
+Scope: Atoll’s Windows top-edge shell, covering Reef, Compact, and Expanded surfaces. Mode: Operate.
 
 Audience and job: a Windows productivity user must read or act on one important status without leaving the current task. The interaction must remain useful at high DPI, avoid focus theft, and recede when idle.
 
-Content and constraints: real media metadata and supported controls, elapsed-time-correct timers, transient volume feedback, basic persistent settings, a single-instance tray utility, no fabricated progress or inactive controls, and no account or telemetry.
+Content and constraints: real media metadata and supported controls, transient volume feedback, basic persistent settings, full-screen hiding, a single-instance tray utility, no fabricated progress or inactive controls, and no account or telemetry.
 
 Chosen direction: Tide-line C from `.impeccable/mocks/atoll-direction-board.png`. Carry forward its quiet edge attachment, concise hierarchy, and sea-glass status line; pair it with one incomplete elliptical Atoll mark. Do not literalize the generated system-toggle dashboard, decorative reef illustrations, taskbar, desktop wallpaper, or example browser content.
 
