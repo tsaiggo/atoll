@@ -1,6 +1,9 @@
+import { normalizeLanguage, type UiLanguage } from "./i18n";
+
 export type IdleMode = "reef" | "hidden";
 
 export interface AtollSettings {
+  language: UiLanguage;
   animationsEnabled: boolean;
   soundsEnabled: boolean;
   hideInFullscreen: boolean;
@@ -12,6 +15,7 @@ export interface AtollSettings {
 }
 
 export const DEFAULT_SETTINGS: AtollSettings = {
+  language: "en",
   animationsEnabled: true,
   soundsEnabled: true,
   hideInFullscreen: true,
@@ -33,6 +37,7 @@ export function loadSettings(): AtollSettings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      language: normalizeLanguage(parsed.language),
       idleMode: parsed.idleMode === "hidden" ? "hidden" : "reef",
       compactTimeoutMs: clampNumber(parsed.compactTimeoutMs, 1600, 10000, DEFAULT_SETTINGS.compactTimeoutMs),
       expandedTimeoutMs: clampNumber(parsed.expandedTimeoutMs, 3000, 30000, DEFAULT_SETTINGS.expandedTimeoutMs),

@@ -7,11 +7,13 @@ import {
   type MediaStatus,
   type TimerStatus,
 } from "../domain";
+import { copyFor, type UiLanguage } from "../i18n";
 import { shellGeometryStyle } from "../shell/geometry";
 import { renderCompactShell } from "./compact";
 import { renderExpandedShell } from "./expanded";
 
 export function renderApp(root: HTMLElement, vm: AppViewModel): void {
+  const copy = copyFor(vm.settings.language);
   const focusedAction = root
     .querySelector<HTMLElement>("[data-action]:focus")
     ?.dataset.action;
@@ -19,6 +21,7 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
   root.dataset.shell = vm.shell;
   root.dataset.content = vm.content;
   root.classList.toggle("motion-disabled", vm.motionDisabled);
+  document.documentElement.lang = vm.settings.language;
 
   if (vm.shell === "hidden") {
     root.innerHTML = "";
@@ -26,7 +29,7 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
   }
   if (vm.shell === "reef") {
     root.innerHTML = `
-      <button class="atoll-shell reef" ${shellGeometryStyle("reef")} type="button" aria-label="Open Atoll">
+      <button class="atoll-shell reef" ${shellGeometryStyle("reef")} type="button" aria-label="${copy.shell.openAtoll}">
         <span class="reef__tide"></span>
       </button>`;
     if (focusedInsideShell) root.querySelector<HTMLElement>("button.reef")?.focus();
@@ -46,6 +49,7 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
 export function updateMediaProgress(
   root: HTMLElement,
   media: MediaStatus | null,
+  language: UiLanguage,
   now = Date.now(),
 ): void {
   if (!media || media.durationMs === undefined || media.durationMs <= 0) return;
@@ -53,12 +57,13 @@ export function updateMediaProgress(
   const ratio = Math.min(1, Math.max(0, position / media.durationMs));
   const progress = root.querySelector<HTMLElement>("[data-media-progress]");
   const elapsed = root.querySelector<HTMLElement>("[data-media-elapsed]");
+  const copy = copyFor(language).media;
   if (progress) {
     progress.style.transform = `scaleX(${ratio})`;
     progress.parentElement?.setAttribute("aria-valuenow", String(Math.floor(position / 1000)));
     progress.parentElement?.setAttribute(
       "aria-valuetext",
-      `${formatPlaybackTime(position)} of ${formatPlaybackTime(media.durationMs)}`,
+      copy.progressValue(formatPlaybackTime(position), formatPlaybackTime(media.durationMs)),
     );
   }
   if (elapsed) elapsed.textContent = formatPlaybackTime(position);
@@ -67,22 +72,23 @@ export function updateMediaProgress(
 export function updateTimerRemaining(
   root: HTMLElement,
   timer: TimerStatus,
+  language: UiLanguage,
   now = Date.now(),
 ): void {
   const value = formatDuration(remainingMs(timer, now));
+  const copy = copyFor(language);
   root
     .querySelectorAll<HTMLElement>("[data-timer-remaining]")
-    .forEach(
-      (element) =>
-        (element.textContent = `${value}${element.dataset.timerRemainingSuffix ?? ""}`),
-    );
+    .forEach((element) => {
+      element.textContent =
+        element.dataset.timerRemainingCopy === "remaining"
+          ? copy.shell.remaining(value)
+          : value;
+    });
   const compactTimer = root.querySelector<HTMLElement>(".compact--timer");
   if (compactTimer) {
     const suffix = compactTimer.dataset.timerAriaSuffix ?? "";
-    compactTimer.setAttribute(
-      "aria-label",
-      `Focus timer, ${value} remaining, running. Expand Atoll${suffix}`,
-    );
+    compactTimer.setAttribute("aria-label", copy.timer.accessibleRunning(value, suffix));
   }
 }
 

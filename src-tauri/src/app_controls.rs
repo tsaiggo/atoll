@@ -2,12 +2,134 @@
 use tauri::menu::Submenu;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter,
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
+    Emitter, Runtime,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-pub(crate) struct QuickMenu(Menu<tauri::Wry>);
+#[derive(Clone, Copy)]
+enum MenuLanguage {
+    English,
+    SimplifiedChinese,
+}
+
+impl MenuLanguage {
+    fn parse(language: &str) -> Result<Self, String> {
+        match language {
+            "en" => Ok(Self::English),
+            "zh-CN" => Ok(Self::SimplifiedChinese),
+            _ => Err(format!(
+                "Unsupported menu language '{language}'. Expected 'en' or 'zh-CN'."
+            )),
+        }
+    }
+
+    fn labels(self) -> MenuLabels {
+        match self {
+            Self::English => MenuLabels {
+                toggle: "Show or hide Atoll",
+                settings: "Settings",
+                quit: "Exit Atoll",
+                tooltip: "Atoll — Your status, surfaced.",
+                #[cfg(debug_assertions)]
+                demo: "Demo",
+                #[cfg(debug_assertions)]
+                demo_idle: "Idle",
+                #[cfg(debug_assertions)]
+                demo_media: "Media playing",
+                #[cfg(debug_assertions)]
+                demo_volume: "Volume",
+                #[cfg(debug_assertions)]
+                demo_timer: "Timer running",
+                #[cfg(debug_assertions)]
+                demo_finished: "Timer finished",
+            },
+            Self::SimplifiedChinese => MenuLabels {
+                toggle: "显示或隐藏 Atoll",
+                settings: "设置",
+                quit: "退出 Atoll",
+                tooltip: "Atoll — 重要状态，浮现于顶端。",
+                #[cfg(debug_assertions)]
+                demo: "演示",
+                #[cfg(debug_assertions)]
+                demo_idle: "空闲",
+                #[cfg(debug_assertions)]
+                demo_media: "媒体播放",
+                #[cfg(debug_assertions)]
+                demo_volume: "音量",
+                #[cfg(debug_assertions)]
+                demo_timer: "计时进行中",
+                #[cfg(debug_assertions)]
+                demo_finished: "计时已结束",
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct MenuLabels {
+    toggle: &'static str,
+    settings: &'static str,
+    quit: &'static str,
+    tooltip: &'static str,
+    #[cfg(debug_assertions)]
+    demo: &'static str,
+    #[cfg(debug_assertions)]
+    demo_idle: &'static str,
+    #[cfg(debug_assertions)]
+    demo_media: &'static str,
+    #[cfg(debug_assertions)]
+    demo_volume: &'static str,
+    #[cfg(debug_assertions)]
+    demo_timer: &'static str,
+    #[cfg(debug_assertions)]
+    demo_finished: &'static str,
+}
+
+#[cfg(debug_assertions)]
+struct DebugMenuItems<R: Runtime> {
+    submenu: Submenu<R>,
+    idle: MenuItem<R>,
+    media: MenuItem<R>,
+    volume: MenuItem<R>,
+    timer: MenuItem<R>,
+    finished: MenuItem<R>,
+}
+
+struct LocalizedMenu<R: Runtime> {
+    menu: Menu<R>,
+    toggle: MenuItem<R>,
+    settings: MenuItem<R>,
+    quit: MenuItem<R>,
+    #[cfg(debug_assertions)]
+    debug: DebugMenuItems<R>,
+}
+
+impl<R: Runtime> LocalizedMenu<R> {
+    fn set_labels(&self, labels: MenuLabels) -> tauri::Result<()> {
+        self.toggle.set_text(labels.toggle)?;
+        self.settings.set_text(labels.settings)?;
+        self.quit.set_text(labels.quit)?;
+
+        #[cfg(debug_assertions)]
+        {
+            self.debug.submenu.set_text(labels.demo)?;
+            self.debug.idle.set_text(labels.demo_idle)?;
+            self.debug.media.set_text(labels.demo_media)?;
+            self.debug.volume.set_text(labels.demo_volume)?;
+            self.debug.timer.set_text(labels.demo_timer)?;
+            self.debug.finished.set_text(labels.demo_finished)?;
+        }
+
+        Ok(())
+    }
+}
+
+pub(crate) struct QuickMenu {
+    tray_menu: LocalizedMenu<tauri::Wry>,
+    context_menu: LocalizedMenu<tauri::Wry>,
+    tray_icon: TrayIcon<tauri::Wry>,
+}
 
 #[tauri::command]
 pub(crate) fn show_context_menu(
@@ -15,8 +137,22 @@ pub(crate) fn show_context_menu(
     menu: tauri::State<'_, QuickMenu>,
 ) -> Result<(), String> {
     use tauri::menu::ContextMenu;
-    menu.0
+    menu.context_menu
+        .menu
         .popup(window.as_ref().window())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn set_menu_language(
+    language: String,
+    menu: tauri::State<'_, QuickMenu>,
+) -> Result<(), String> {
+    let labels = MenuLanguage::parse(&language)?.labels();
+    menu.tray_menu
+        .set_labels(labels)
+        .and_then(|_| menu.context_menu.set_labels(labels))
+        .and_then(|_| menu.tray_icon.set_tooltip(Some(labels.tooltip)))
         .map_err(|error| error.to_string())
 }
 
@@ -26,86 +162,91 @@ pub(crate) fn emit_action(app: &tauri::AppHandle, action: &str) {
     }
 }
 
-fn create_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let toggle = MenuItem::with_id(app, "toggle", "Show / hide Atoll", true, None::<&str>)?;
-    let expand = MenuItem::with_id(app, "expand", "Expand / collapse", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Exit Atoll", true, None::<&str>)?;
+fn create_menu<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    labels: MenuLabels,
+) -> tauri::Result<LocalizedMenu<R>> {
+    let toggle = MenuItem::with_id(app, "toggle", labels.toggle, true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", labels.settings, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
 
     #[cfg(debug_assertions)]
-    {
-        let demo_idle = MenuItem::with_id(app, "demo:idle", "Idle", true, None::<&str>)?;
-        let demo_media = MenuItem::with_id(app, "demo:media", "Media playing", true, None::<&str>)?;
-        let demo_volume = MenuItem::with_id(app, "demo:volume", "Volume", true, None::<&str>)?;
+    let debug = {
+        let idle = MenuItem::with_id(app, "demo:idle", labels.demo_idle, true, None::<&str>)?;
+        let media = MenuItem::with_id(app, "demo:media", labels.demo_media, true, None::<&str>)?;
+        let volume = MenuItem::with_id(app, "demo:volume", labels.demo_volume, true, None::<&str>)?;
         let demo_timer = MenuItem::with_id(
             app,
             "demo:timer-running",
-            "Timer running",
+            labels.demo_timer,
             true,
             None::<&str>,
         )?;
-        let demo_finished = MenuItem::with_id(
+        let finished = MenuItem::with_id(
             app,
             "demo:timer-finished",
-            "Timer finished",
+            labels.demo_finished,
             true,
             None::<&str>,
         )?;
-        let demo = Submenu::with_items(
+        let submenu = Submenu::with_items(
             app,
-            "Demo",
+            labels.demo,
             true,
-            &[
-                &demo_idle,
-                &demo_media,
-                &demo_volume,
-                &demo_timer,
-                &demo_finished,
-            ],
+            &[&idle, &media, &volume, &demo_timer, &finished],
         )?;
-        let separator_one = PredefinedMenuItem::separator(app)?;
-        let separator_two = PredefinedMenuItem::separator(app)?;
 
-        Menu::with_items(
-            app,
-            &[
-                &toggle,
-                &expand,
-                &separator_one,
-                &demo,
-                &settings,
-                &separator_two,
-                &quit,
-            ],
-        )
-    }
+        DebugMenuItems {
+            submenu,
+            idle,
+            media,
+            volume,
+            timer: demo_timer,
+            finished,
+        }
+    };
+
+    let separator_one = PredefinedMenuItem::separator(app)?;
+    let separator_two = PredefinedMenuItem::separator(app)?;
+
+    #[cfg(debug_assertions)]
+    let menu = Menu::with_items(
+        app,
+        &[
+            &toggle,
+            &separator_one,
+            &debug.submenu,
+            &settings,
+            &separator_two,
+            &quit,
+        ],
+    )?;
 
     #[cfg(not(debug_assertions))]
-    {
-        let separator_one = PredefinedMenuItem::separator(app)?;
-        let separator_two = PredefinedMenuItem::separator(app)?;
-        Menu::with_items(
-            app,
-            &[
-                &toggle,
-                &expand,
-                &separator_one,
-                &settings,
-                &separator_two,
-                &quit,
-            ],
-        )
-    }
+    let menu = Menu::with_items(
+        app,
+        &[&toggle, &separator_one, &settings, &separator_two, &quit],
+    )?;
+
+    Ok(LocalizedMenu {
+        menu,
+        toggle,
+        settings,
+        quit,
+        #[cfg(debug_assertions)]
+        debug,
+    })
 }
 
 pub(crate) fn setup_tray(app: &tauri::App) -> tauri::Result<QuickMenu> {
-    let tray_menu = create_menu(app.handle())?;
-    let context_menu = create_menu(app.handle())?;
+    let labels = MenuLanguage::English.labels();
+    let tray_menu = create_menu(app.handle(), labels)?;
+    let context_menu = create_menu(app.handle(), labels)?;
 
     let mut builder = TrayIconBuilder::with_id("atoll-tray")
-        .menu(&tray_menu)
+        .menu(&tray_menu.menu)
         .show_menu_on_left_click(false)
-        .tooltip("Atoll — Your status, surfaced.")
+        .tooltip(labels.tooltip)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "quit" => app.exit(0),
             action => emit_action(app, action),
@@ -124,8 +265,12 @@ pub(crate) fn setup_tray(app: &tauri::App) -> tauri::Result<QuickMenu> {
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
-    builder.build(app)?;
-    Ok(QuickMenu(context_menu))
+    let tray_icon = builder.build(app)?;
+    Ok(QuickMenu {
+        tray_menu,
+        context_menu,
+        tray_icon,
+    })
 }
 
 pub(crate) fn setup_shortcut(app: &tauri::App) -> tauri::Result<()> {

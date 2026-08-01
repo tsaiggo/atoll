@@ -1,4 +1,5 @@
 import { mediaPositionMs, type MediaStatus } from "../../domain";
+import { copyFor, type UiLanguage } from "../../i18n";
 
 export type MediaCommand = "previous" | "toggle" | "next";
 
@@ -23,10 +24,15 @@ export function optimisticPlaybackToggle(current: MediaStatus): MediaStatus {
   };
 }
 
-export function commandPendingMessage(command: MediaCommand, current: MediaStatus): string {
-  if (command === "previous") return "Going to previous track…";
-  if (command === "next") return "Going to next track…";
-  return current.playing ? "Pausing…" : "Playing…";
+export function commandPendingMessage(
+  command: MediaCommand,
+  current: MediaStatus,
+  language: UiLanguage,
+): string {
+  const copy = copyFor(language).media;
+  if (command === "previous") return copy.pendingPrevious;
+  if (command === "next") return copy.pendingNext;
+  return current.playing ? copy.pendingPause : copy.pendingPlay;
 }
 
 export function mediaIdentityFor(current: MediaStatus): string {

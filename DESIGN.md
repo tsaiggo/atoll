@@ -111,14 +111,14 @@ spacing:
   shell: "14px"
 components:
   shell-compact:
-    backgroundColor: "WinUI Acrylic fallback + theme Card fill"
+    backgroundColor: "WinUI material fallback + theme Card fill + semantic wash"
     textColor: "{colors.foam-white}"
     typography: "{typography.body}"
     rounded: "{rounded.compact}"
     padding: "5px 9px 5px 7px"
     size: "188px × 44px"
   shell-expanded:
-    backgroundColor: "WinUI Acrylic fallback + theme Card fill"
+    backgroundColor: "WinUI material fallback + theme Card fill + semantic wash"
     textColor: "{colors.foam-white}"
     typography: "{typography.body}"
     rounded: "{rounded.expanded}"
@@ -156,7 +156,7 @@ components:
 
 **Creative North Star: "The Quiet Tide Line"**
 
-Atoll is an edge-attached instrument that feels grown from the top of the display rather than placed on it. Its shell follows the Windows app theme through the official Acrylic fallback colors, WinUI Card fill, and a single Card contour; one thin tide line remains the Atoll signature. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
+Atoll is an edge-attached instrument that feels grown from the top of the display rather than placed on it. Its shell follows the Windows app theme through the official material fallback colors, WinUI Card fill, a restrained semantic wash, and a single Card contour; one thin tide line remains the Atoll signature. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
 
 The shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life; sand marks elapsed time; coral is reserved for a completed timer that requires acknowledgement.
 
@@ -165,7 +165,7 @@ The shell is the identity. Reef, Compact, and Expanded are three expressions of 
 - Edge-attached silhouettes with open top edges and rounded lower corners.
 - Dense information hierarchy sized for a glance, not a dashboard.
 - A single tide-line signature shared across every shell state.
-- Fluent Card material and one precise contour instead of decorative highlights.
+- Fluent Card material, one functional module wash, and one precise contour instead of decorative highlights.
 - Authored outline icons and tabular numerals for changing values.
 
 ## Colors
@@ -186,6 +186,7 @@ The palette is a submerged neutral field with one cool living accent and two nar
 - **Acrylic Fallback:** The system-aligned solid backing used by the exact-fit native shell. It avoids rectangular compositor spill outside Atoll's lower corners.
 - **Card Fill:** The official WinUI Card overlay above the fallback backing in each theme.
 - **Card Stroke:** One official WinUI contour around the complete shell.
+- **Module Wash:** A low-opacity material tint beneath content: mint for media, blue for volume, sand for a running timer, and coral for completion. It identifies state without recoloring text or controls.
 - **Raised Basin:** Hovered rows and secondary buttons.
 - **Soft Basin:** Gentle hover and nested-control separation.
 - **Foam White:** Primary text and high-confidence values.
@@ -225,7 +226,7 @@ When more than one persistent status is active, Compact presents a stable card c
 
 ## Elevation & Depth
 
-Atoll uses the official WinUI Acrylic fallback color as its native backing and the official Card fill as its content layer. Top-level Accent Acrylic is intentionally disabled because Windows paints that visual to the rectangular HWND instead of reliably honoring Atoll's asymmetric region. Nested surfaces are differentiated by subtle Fluent neutral fills. The exact-fit transparent host does not reserve an external shadow gutter, so the shell uses one inset Card contour and no hand-drawn halo.
+Atoll uses the official WinUI material fallback color as its native backing and the official Card fill as its content layer. A very soft directional highlight and state-specific material wash restore depth when a true system backdrop is unavailable; each wash stays below content and remains deliberately weaker in light mode. Top-level Accent Acrylic is intentionally disabled because Windows paints that visual to the rectangular HWND instead of reliably honoring Atoll's asymmetric region. Nested surfaces are differentiated by subtle Fluent neutral fills. The exact-fit transparent host does not reserve an external shadow gutter, so the shell uses one inset Card contour and no hand-drawn halo.
 
 ### Shadow Vocabulary
 
