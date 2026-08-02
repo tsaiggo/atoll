@@ -3,42 +3,50 @@
   font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
-  --surface: #151518;
-  --surface-raised: #1d1d20;
-  --surface-soft: rgba(235, 235, 245, 0.08);
-  --surface-hover: rgba(235, 235, 245, 0.14);
-  --surface-quiet: rgba(235, 235, 245, 0.045);
-  --shell-acrylic-fallback: #000000;
-  --shell-card-fill: #000000;
-  --shell-card-stroke: transparent;
-  --shell-material-highlight: transparent;
-  --shell-material-depth: transparent;
+  --surface: rgba(255, 255, 255, 0.075);
+  --surface-raised: rgba(255, 255, 255, 0.115);
+  --surface-soft: rgba(255, 255, 255, 0.085);
+  --surface-hover: rgba(255, 255, 255, 0.17);
+  --surface-quiet: rgba(255, 255, 255, 0.05);
+  --shell-opaque-fallback: #1f232c;
+  /* The WebView paints the acrylic surface itself: a translucent theme base
+     plus highlight/depth gradients and inset contours, clipped by the CSS
+     radius and the matching native window region. The tint stays thin so the
+     desktop remains visible through the shell. */
+  --shell-acrylic-fallback: rgba(24, 29, 38, 0.26);
+  --shell-card-stroke: rgba(255, 255, 255, 0.18);
+  --shell-material-highlight: rgba(255, 255, 255, 0.06);
+  --shell-material-edge: rgba(255, 255, 255, 0.14);
+  --shell-material-depth: rgba(3, 7, 14, 0.18);
+  --shell-backdrop-blur: 28px;
+  --shell-backdrop-saturation: 138%;
   --shell-tint-neutral: transparent;
   --shell-tint-media: transparent;
   --shell-tint-volume: transparent;
-  --text: #f5f5f7;
-  --muted: #aeaeb2;
-  --quiet: #6e6e73;
+  --text: #f5f7fb;
+  --muted: #c4c8d1;
+  --quiet: #9299a7;
   --accent: #78e2d1;
   --accent-strong: #a4f0e2;
   --accent-ink: #000000;
-  --meter-track: rgba(235, 235, 245, 0.18);
-  --media-progress-fill: #f5f5f7;
-  --media-source-signal: rgba(245, 245, 247, 0.72);
-  --cover-brand: #151518;
-  --cover-edge: rgba(255, 255, 255, 0.1);
+  --meter-track: rgba(255, 255, 255, 0.23);
+  --media-progress-fill: #f5f7fb;
+  --media-source-signal: rgba(245, 247, 251, 0.78);
+  --cover-brand: rgba(255, 255, 255, 0.1);
+  --cover-edge: rgba(255, 255, 255, 0.14);
   --accent-soft: rgba(120, 226, 209, 0.18);
   --accent-medium: rgba(120, 226, 209, 0.42);
   --accent-edge: rgba(120, 226, 209, 0.94);
   --transport-glint: transparent;
-  --transport-surface: rgba(235, 235, 245, 0.09);
-  --transport-hover: rgba(235, 235, 245, 0.16);
+  --transport-surface: rgba(255, 255, 255, 0.1);
+  --transport-hover: rgba(255, 255, 255, 0.18);
   --transport-edge: transparent;
   --transport-primary-edge: transparent;
   --transport-shadow: transparent;
-  --switch-track: #3a3a3c;
-  --switch-thumb: #f5f5f7;
-  --island-primary-fill: #f5f5f7;
+  --switch-track: rgba(255, 255, 255, 0.24);
+  --switch-thumb: #f5f7fb;
+  --island-primary-fill: #f5f7fb;
+  --island-primary-hover: #ffffff;
   --island-primary-ink: #000000;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
@@ -47,16 +55,40 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    /* The Island remains recognizably dark in light mode; only the signal
-       and neutral ramps adapt to the surrounding Windows theme. */
-    color-scheme: dark;
-    --surface-raised: #202024;
-    --surface-soft: rgba(255, 255, 255, 0.1);
-    --surface-hover: rgba(255, 255, 255, 0.17);
-    --accent: #79dfcf;
-    --accent-strong: #b3f7ea;
-    --accent-soft: rgba(121, 223, 207, 0.2);
-    --accent-edge: rgba(121, 223, 207, 0.96);
+    color-scheme: light;
+    --surface: rgba(46, 58, 78, 0.055);
+    --surface-raised: rgba(255, 255, 255, 0.5);
+    --surface-soft: rgba(255, 255, 255, 0.56);
+    --surface-hover: rgba(255, 255, 255, 0.78);
+    --surface-quiet: rgba(255, 255, 255, 0.38);
+    --shell-opaque-fallback: #edf2f8;
+    --shell-acrylic-fallback: rgba(239, 244, 251, 0.24);
+    --shell-card-stroke: rgba(30, 40, 55, 0.14);
+    --shell-material-highlight: rgba(255, 255, 255, 0.1);
+    --shell-material-edge: rgba(30, 40, 55, 0.12);
+    --shell-material-depth: rgba(66, 82, 108, 0.16);
+    --text: #1c222d;
+    --muted: #556072;
+    --quiet: #727d8f;
+    --accent: #0d776a;
+    --accent-strong: #0a9582;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(13, 119, 106, 0.13);
+    --accent-medium: rgba(13, 119, 106, 0.38);
+    --accent-edge: rgba(13, 119, 106, 0.76);
+    --meter-track: rgba(47, 61, 83, 0.18);
+    --media-progress-fill: #1f2937;
+    --media-source-signal: rgba(34, 43, 58, 0.72);
+    --cover-brand: rgba(46, 58, 78, 0.1);
+    --cover-edge: rgba(255, 255, 255, 0.72);
+    --transport-surface: rgba(255, 255, 255, 0.54);
+    --transport-hover: rgba(255, 255, 255, 0.86);
+    --transport-edge: rgba(58, 70, 92, 0.1);
+    --switch-track: rgba(76, 88, 110, 0.3);
+    --switch-thumb: #ffffff;
+    --island-primary-fill: #252d39;
+    --island-primary-hover: #323c4b;
+    --island-primary-ink: #ffffff;
   }
 }
 
@@ -77,6 +109,21 @@ body,
 body {
   user-select: none;
   -webkit-font-smoothing: antialiased;
+}
+
+#material-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: var(--material-radius, 0px);
+}
+
+#material-flow {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 button {
@@ -114,6 +161,8 @@ button:focus-visible {
 }
 
 #app {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: stretch;
   opacity: 1;
@@ -130,22 +179,20 @@ button:focus-visible {
   height: 100%;
   color: var(--text);
   border-radius: var(--shell-radius);
-  background: var(--shell-card-fill);
-  box-shadow: none;
+  background-color: var(--shell-acrylic-fallback);
+  background-image: linear-gradient(
+    180deg,
+    var(--shell-material-highlight) 0%,
+    transparent 42%,
+    var(--shell-material-depth) 100%
+  );
+  -webkit-backdrop-filter: blur(var(--shell-backdrop-blur)) saturate(var(--shell-backdrop-saturation));
+  backdrop-filter: blur(var(--shell-backdrop-blur)) saturate(var(--shell-backdrop-saturation));
+  box-shadow:
+    inset 0 1px 0 var(--shell-material-edge),
+    inset 0 0 0 1px var(--shell-card-stroke),
+    inset 0 -1px 0 var(--shell-material-depth);
   overflow: hidden;
-}
-
-.compact--media,
-.expanded--media {
-  background-color: var(--shell-acrylic-fallback);
-}
-
-.compact--volume {
-  background-color: var(--shell-acrylic-fallback);
-}
-
-.expanded--settings {
-  background-color: var(--shell-acrylic-fallback);
 }
 
 .reef {
@@ -298,7 +345,7 @@ button:focus-visible {
   padding: 0;
   color: var(--text);
   text-align: left;
-  border-radius: 12px;
+  border-radius: 4px;
   background: transparent;
   cursor: pointer;
 }
@@ -322,7 +369,7 @@ button:focus-visible {
 
 .compact-media__toggle:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--island-primary-ink);
-  background: #ffffff;
+  background: var(--island-primary-hover);
 }
 
 .compact-media__toggle:disabled {
@@ -362,19 +409,19 @@ button:focus-visible {
 .cover--compact {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .cover--home {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .cover--expanded {
   width: 52px;
   height: 52px;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .cover--brand {
@@ -527,7 +574,7 @@ button:focus-visible {
 
 .icon-button--transport:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--island-primary-ink);
-  background: #ffffff;
+  background: var(--island-primary-hover);
 }
 
 .icon-button--transport:disabled {
@@ -554,7 +601,7 @@ button:focus-visible {
   gap: 10px;
   margin-top: 4px;
   padding: 8px 4px;
-  border-radius: 12px;
+  border-radius: 4px;
   background: transparent;
   transition: background-color 120ms ease-out;
 }
@@ -612,7 +659,7 @@ button:focus-visible {
   color: var(--muted);
   font-size: 10px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface-soft);
   cursor: pointer;
   transition:
@@ -712,13 +759,15 @@ button:focus-visible {
   overflow: hidden;
 }
 
-.native-runtime .atoll-shell {
-  background: var(--shell-card-fill);
-}
-
 @media (prefers-reduced-transparency: reduce) {
   .atoll-shell {
-    background: var(--shell-card-fill);
+    background: var(--shell-opaque-fallback);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.18);
   }
 }
 
@@ -848,7 +897,7 @@ button:focus-visible {
 
 .media-button--primary:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--island-primary-ink);
-  background: #ffffff;
+  background: var(--island-primary-hover);
 }
 
 .media-button--primary:disabled {
@@ -921,7 +970,7 @@ button:focus-visible {
   gap: 3px;
   padding: 12px 16px;
   text-align: center;
-  border-radius: 12px;
+  border-radius: 4px;
   background: var(--surface-quiet);
 }
 
@@ -970,7 +1019,7 @@ button:focus-visible {
   padding: 7px 8px;
   color: var(--text);
   text-align: left;
-  border-radius: 12px;
+  border-radius: 4px;
   background: var(--surface-raised);
 }
 
@@ -1051,7 +1100,7 @@ button.setting-row:hover {
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border-radius: 999px;
+  border-radius: 8px;
   background: var(--surface-raised);
   box-shadow: inset 0 0 0 1px var(--transport-edge);
 }
@@ -1061,7 +1110,7 @@ button.setting-row:hover {
   height: 22px;
   flex: 1;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: 4px;
   background: transparent;
 }
 
@@ -1132,7 +1181,7 @@ button.setting-row:hover {
 }
 
 /* The native shell establishes the footprint first. Content is then released
-   from the same black volume in a deliberate, readable order. */
+   from the same Acrylic volume in a deliberate, readable order. */
 .compact.shell-entering .compact-media__open,
 .compact.shell-entering > .mark,
 .compact.shell-entering > .compact__glyph {

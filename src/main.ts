@@ -31,6 +31,7 @@ import {
   showNativeContextMenu,
   subscribeNativeEvents,
 } from "./platform/native";
+import { IslandMaterialFlow } from "./material/flow";
 import { SHELL_GEOMETRY } from "./shell/geometry";
 import { renderApp, updateMediaProgress } from "./ui/render";
 import "./styles.css";
@@ -43,6 +44,12 @@ interface NativeAcceptedShell {
 const appElement = document.querySelector<HTMLElement>("#app");
 if (!appElement) throw new Error("Atoll root element was not found.");
 const app: HTMLElement = appElement;
+const materialLayer = document.querySelector<HTMLElement>("#material-layer");
+const materialCanvas = document.querySelector<HTMLCanvasElement>("#material-flow");
+if (!materialLayer || !materialCanvas) {
+  throw new Error("Atoll material layer was not found.");
+}
+const materialFlow = new IslandMaterialFlow(materialLayer, materialCanvas);
 
 const requestedPreviewMode = new URLSearchParams(location.search).get("preview");
 const previewMode =
@@ -394,6 +401,7 @@ function surfaceEvent(panel: ExpandedPanel): void {
     return;
   }
   if (shell === "expanded") {
+    materialFlow.pulse(panel === "media" ? "media" : "volume");
     resetExpandedExpiry();
     render();
     return;
@@ -489,6 +497,7 @@ async function setShell(
   if (previous !== next || forceNative) shellRevision += 1;
   const revision = shellRevision;
   animateNextShellContent = animated && previous !== next;
+  if (enteredExpanded && animated) materialFlow.pulse("expand");
   setShellTransition(previous, next, animateNextShellContent);
   shell = next;
   if (next !== "hidden") lastVisibleShell = next;
@@ -643,6 +652,7 @@ function clearExpandedExpiry(): void {
 async function sendMediaCommand(command: MediaCommand): Promise<void> {
   const current = media;
   if (!current || !mediaCommandEnabled(command, current) || pendingMediaCommand !== null) return;
+  materialFlow.pulse("control");
 
   if (!nativeRuntime || demoOverride === "media") {
     if (command === "toggle") media = optimisticPlaybackToggle(current);
@@ -735,5 +745,12 @@ function render(): void {
   };
   animateNextShellContent = false;
   renderApp(app, vm);
+  const geometry = shell === "hidden" ? SHELL_GEOMETRY[lastVisibleShell] : SHELL_GEOMETRY[shell];
+  materialFlow.sync({
+    shell,
+    cornerRadius: geometry.cornerRadius,
+    motionDisabled: reducedMotion.matches,
+    lightTheme: lightColorScheme.matches,
+  });
   scheduleMediaProgressTick();
 }

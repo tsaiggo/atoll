@@ -39,11 +39,11 @@ struct WindowPlacement {
 }
 
 // The Status Island surface is rendered inside the webview. Native code owns
-// the exact-fit HWND policy and four-corner region so no rectangular compositor
-// layer can appear outside the CSS silhouette.
+// the exact-fit HWND policy and four-corner region so no rectangular surface
+// can appear outside the CSS silhouette.
 
 #[cfg(target_os = "windows")]
-fn apply_dwm_frame_policy(hwnd: windows::Win32::Foundation::HWND) {
+fn apply_dwm_frame_policy(hwnd: windows::Win32::Foundation::HWND, dark_mode: bool) {
     use std::ffi::c_void;
 
     use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWINDOWATTRIBUTE};
@@ -51,8 +51,14 @@ fn apply_dwm_frame_policy(hwnd: windows::Win32::Foundation::HWND) {
     const DWMWA_WINDOW_CORNER_PREFERENCE: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(33);
     const DWMWA_BORDER_COLOR: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(34);
     const DWMWA_SYSTEMBACKDROP_TYPE: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(38);
+    const DWMWA_USE_IMMERSIVE_DARK_MODE: DWMWINDOWATTRIBUTE = DWMWINDOWATTRIBUTE(20);
     const DWMWCP_DONOTROUND: i32 = 1;
     const DWMWA_COLOR_NONE: u32 = 0xFFFF_FFFE;
+    // System backdrops (DWMWA_SYSTEMBACKDROP_TYPE) are painted by DWM into an
+    // opaque window frame; a transparent WebView window is composed as a layered
+    // surface instead and would render its default white page over the backdrop.
+    // The WebView's own CSS material (backdrop-filter + translucent fallback)
+    // carries the acrylic surface, clipped by the CSS radius and matching HRGN.
     const DWMSBT_NONE: i32 = 1;
 
     fn set_attribute<T>(
@@ -73,8 +79,11 @@ fn apply_dwm_frame_policy(hwnd: windows::Win32::Foundation::HWND) {
         }
     }
 
+    let immersive_dark_mode: i32 = if dark_mode { 1 } else { 0 };
+
     set_attribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND);
     set_attribute(hwnd, DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE);
+    set_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &immersive_dark_mode);
     set_attribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &DWMSBT_NONE);
 }
 
@@ -102,7 +111,9 @@ pub fn apply_native_window_policy(window: &WebviewWindow) -> Result<(), String> 
         )
         .map_err(|error| error.to_string())?;
     }
-    apply_dwm_frame_policy(hwnd);
+    // The window starts hidden; the first shell request immediately replaces
+    // this provisional dark mode with the system theme reported by the WebView.
+    apply_dwm_frame_policy(hwnd, true);
     Ok(())
 }
 
@@ -167,6 +178,7 @@ struct ShellRequest {
     corner_radius: f64,
     animated: bool,
     top_margin: f64,
+    theme: String,
 }
 
 // Tauri exposes command arguments as a flat IPC contract, so this boundary intentionally
@@ -190,8 +202,8 @@ pub async fn set_window_shell(
         corner_radius,
         animated,
         top_margin,
+        theme,
     };
-    let _ = theme;
     tauri::async_runtime::spawn_blocking(move || accept_window_shell(window, request))
         .await
         .map_err(|error| error.to_string())?
@@ -205,8 +217,19 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         corner_radius: requested_corner_radius,
         animated,
         top_margin,
+        theme,
     } = request;
     let target_corner_radius = requested_corner_radius.max(0.0);
+
+    #[cfg(target_os = "windows")]
+    {
+        let dark_mode = !theme.eq_ignore_ascii_case("light");
+        let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+        apply_dwm_frame_policy(hwnd, dark_mode);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = theme;
     let (epoch, start_width, start_height, start_corner_radius, placement) = {
         // Keep accepting a newer request and each native mutation mutually ordered.
         // An older frame can finish before this block, but it can never write after it.
@@ -451,6 +474,7 @@ fn resize_and_position_at(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn apply_shell_region_at(
     window: &WebviewWindow,
     placement: WindowPlacement,
@@ -502,27 +526,7 @@ struct WindowRegionBands {
 }
 
 #[cfg(target_os = "windows")]
-fn corner_pixel_coverage(radius: f64, center_y: f64, x: i32, y: i32, top_corner: bool) -> f64 {
-    const SAMPLES: usize = 32;
-
-    let mut coverage = 0.0;
-    for sample in 0..SAMPLES {
-        let sample_y = y as f64 + (sample as f64 + 0.5) / SAMPLES as f64;
-        let dy = if top_corner {
-            (center_y - sample_y).clamp(0.0, radius)
-        } else {
-            (sample_y - center_y).clamp(0.0, radius)
-        };
-        let boundary_x = radius - (radius * radius - dy * dy).max(0.0).sqrt();
-        coverage += (x as f64 + 1.0 - boundary_x).clamp(0.0, 1.0);
-    }
-    coverage / SAMPLES as f64
-}
-
-#[cfg(target_os = "windows")]
 fn rounded_rect_row_inset(radius: f64, physical_height: i32, y: i32) -> i32 {
-    const MIN_VISIBLE_COVERAGE: f64 = 0.05;
-
     if radius <= f64::EPSILON {
         return 0;
     }
@@ -532,17 +536,18 @@ fn rounded_rect_row_inset(radius: f64, physical_height: i32, y: i32) -> i32 {
         return 0;
     }
 
-    let use_top_corner = top_corner;
-    let center_y = if use_top_corner {
+    let center_y = if top_corner {
         radius
     } else {
         physical_height as f64 - radius
     };
-    (0..=radius.ceil() as i32)
-        .find(|x| {
-            corner_pixel_coverage(radius, center_y, *x, y, use_top_corner) >= MIN_VISIBLE_COVERAGE
-        })
-        .unwrap_or_else(|| radius.ceil() as i32)
+    let dy = (center_y - (y as f64 + 0.5)).abs().min(radius);
+    // The region must trace the same ideal corner circle as the CSS
+    // border-radius. A five-percent-coverage threshold made the native clip two
+    // pixels squarer than the styled corner, exposing the rectangular window
+    // surface outside the CSS silhouette. Sampling the circle at the row center
+    // keeps the native clip and the CSS contour on the same pixel boundary.
+    (radius - (radius * radius - dy * dy).max(0.0).sqrt()).round() as i32
 }
 
 #[cfg(target_os = "windows")]
@@ -561,9 +566,8 @@ fn window_region_bands(
     let mut bands: Vec<WindowRegionBand> = Vec::new();
 
     for y in 0..physical_height {
-        // Chromium discards subpixel fragments below roughly five percent
-        // coverage. Mirroring that threshold keeps CSS's visible contour and the
-        // native hit region aligned at all four Island corners.
+        // Each band clips the window surface exactly at the CSS silhouette so
+        // no rectangular corner remains outside the styled radius.
         let inset =
             rounded_rect_row_inset(physical_radius, physical_height, y).min(physical_width / 2);
         let right = physical_width - inset;
@@ -630,7 +634,8 @@ fn apply_window_region(
 
         // SetWindowPos has already invalidated this frame. Avoid asking GDI for
         // a second synchronous repaint solely for the hit-test contour.
-        if SetWindowRgn(hwnd, Some(region), false) == 0 {
+        let set_result = SetWindowRgn(hwnd, Some(region), false);
+        if set_result == 0 {
             let _ = DeleteObject(region.into());
             return Err("Unable to apply the Atoll click region".to_string());
         }
@@ -674,16 +679,16 @@ mod tests {
     #[test]
     fn effective_corner_radius_matches_css_constraints() {
         assert_eq!(effective_corner_radius(16.0, 96.0, 32.0), 16.0);
-        assert_eq!(effective_corner_radius(28.0, 256.0, 56.0), 28.0);
-        assert_eq!(effective_corner_radius(28.0, 400.0, 176.0), 28.0);
-        assert_eq!(effective_corner_radius(28.0, 256.0, 28.0), 14.0);
+        assert_eq!(effective_corner_radius(20.0, 256.0, 56.0), 20.0);
+        assert_eq!(effective_corner_radius(16.0, 400.0, 176.0), 16.0);
+        assert_eq!(effective_corner_radius(16.0, 256.0, 12.0), 6.0);
         assert_eq!(effective_corner_radius(30.0, 40.0, 80.0), 20.0);
     }
 
     #[test]
     fn shell_animation_morphs_geometry_and_radius_on_the_same_curve() {
         let start = (96.0, 32.0, 16.0);
-        let target = (400.0, 176.0, 28.0);
+        let target = (400.0, 176.0, 16.0);
         let steps = 12;
         let mut previous = start;
         for step in 0..=steps {
@@ -718,14 +723,14 @@ mod tests {
             (96.0, 32.0, 16.0, 1.25),
             (96.0, 32.0, 16.0, 1.5),
             (96.0, 32.0, 16.0, 2.0),
-            (256.0, 56.0, 28.0, 1.0),
-            (256.0, 56.0, 28.0, 1.25),
-            (256.0, 56.0, 28.0, 1.5),
-            (256.0, 56.0, 28.0, 2.0),
-            (400.0, 176.0, 28.0, 1.0),
-            (400.0, 176.0, 28.0, 1.25),
-            (400.0, 176.0, 28.0, 1.5),
-            (400.0, 176.0, 28.0, 2.0),
+            (256.0, 56.0, 20.0, 1.0),
+            (256.0, 56.0, 20.0, 1.25),
+            (256.0, 56.0, 20.0, 1.5),
+            (256.0, 56.0, 20.0, 2.0),
+            (400.0, 176.0, 16.0, 1.0),
+            (400.0, 176.0, 16.0, 1.25),
+            (400.0, 176.0, 16.0, 1.5),
+            (400.0, 176.0, 16.0, 2.0),
         ];
 
         for (width, height, radius, scale) in cases {
@@ -752,8 +757,8 @@ mod tests {
     fn island_regions_exclude_all_transparent_corners_at_150_percent() {
         for (width, height, radius) in [
             (96.0, 32.0, 16.0),
-            (256.0, 56.0, 28.0),
-            (400.0, 176.0, 28.0),
+            (256.0, 56.0, 20.0),
+            (400.0, 176.0, 16.0),
         ] {
             let region = window_region_bands(width, height, radius, 1.5);
             let middle_x = region.physical_width / 2;
