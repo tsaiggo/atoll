@@ -53,7 +53,7 @@ function renderHomePanel(vm: AppViewModel): string {
       </button>
       ${
         vm.media
-          ? `<button class="icon-button icon-button--accent" type="button" data-action="media-toggle" aria-label="${vm.media.playing ? copy.actions.pause : copy.actions.play}" ${vm.media.canPlayPause ? "" : "disabled"} ${vm.pendingMediaCommand !== null ? 'aria-disabled="true"' : ""}>${icon(vm.media.playing ? "pause" : "play")}</button>`
+          ? `<button class="icon-button icon-button--transport" type="button" data-action="media-toggle" aria-label="${vm.media.playing ? copy.actions.pause : copy.actions.play}" ${vm.media.canPlayPause ? "" : "disabled"} ${vm.pendingMediaCommand !== null ? 'aria-disabled="true"' : ""}>${icon(vm.media.playing ? "pause" : "play")}</button>`
           : ""
       }
     </div>
@@ -135,12 +135,5 @@ function renderSettingsPanel(vm: AppViewModel): string {
     </header>
     <div class="settings__rows">
       ${settingToggle(copy.settings.fullscreen, copy.settings.fullscreenDetail, "hideInFullscreen", vm.settings.hideInFullscreen)}
-      <div class="setting-row">
-        <span><strong>${copy.settings.idle}</strong><small>${copy.settings.idleDetail}</small></span>
-        <div class="segmented" role="group" aria-label="${copy.settings.idle}">
-          <button type="button" data-action="set-idle" data-value="reef" class="${vm.settings.idleMode === "reef" ? "is-active" : ""}" aria-pressed="${vm.settings.idleMode === "reef"}">${copy.settings.reef}</button>
-          <button type="button" data-action="set-idle" data-value="hidden" class="${vm.settings.idleMode === "hidden" ? "is-active" : ""}" aria-pressed="${vm.settings.idleMode === "hidden"}">${copy.settings.hidden}</button>
-        </div>
-      </div>
     </div>`;
 }

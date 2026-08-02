@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "Atoll",
-        "width": 80,
-        "height": 12,
+        "width": 96,
+        "height": 32,
         "minWidth": 1,
         "minHeight": 1,
         "center": false,

@@ -5,6 +5,7 @@ import {
   type MediaStatus,
 } from "../domain";
 import { copyFor, type UiLanguage } from "../i18n";
+import { icon } from "../icons";
 import { shellGeometryStyle } from "../shell/geometry";
 import { renderCompactShell } from "./compact";
 import { renderExpandedShell } from "./expanded";
@@ -25,9 +26,11 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
     return;
   }
   if (vm.shell === "reef") {
+    const motionClass = vm.animateContent ? " shell-entering" : "";
     root.innerHTML = `
-      <button class="atoll-shell reef" ${shellGeometryStyle("reef")} type="button" aria-label="${copy.shell.openAtoll}">
-        <span class="reef__tide"></span>
+      <button class="atoll-shell reef${motionClass}" ${shellGeometryStyle("reef")} type="button" aria-label="${copy.shell.openAtoll}">
+        <span class="reef__mark" aria-hidden="true">${icon("atoll")}</span>
+        <span class="reef__activity" aria-hidden="true"></span>
       </button>`;
     if (focusedInsideShell) root.querySelector<HTMLElement>("button.reef")?.focus();
     return;

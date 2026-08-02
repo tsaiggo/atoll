@@ -1,12 +1,10 @@
 import { normalizeLanguage, type UiLanguage } from "./i18n";
 
-export type IdleMode = "reef" | "hidden";
+const ISLAND_TOP_MARGIN = 8;
 
 export interface AtollSettings {
   language: UiLanguage;
   hideInFullscreen: boolean;
-  idleMode: IdleMode;
-  compactTimeoutMs: number;
   expandedTimeoutMs: number;
   topMargin: number;
 }
@@ -14,10 +12,8 @@ export interface AtollSettings {
 export const DEFAULT_SETTINGS: AtollSettings = {
   language: "en",
   hideInFullscreen: true,
-  idleMode: "reef",
-  compactTimeoutMs: 3200,
   expandedTimeoutMs: 7000,
-  topMargin: 0,
+  topMargin: ISLAND_TOP_MARGIN,
 };
 
 const SETTINGS_KEY = "atoll.settings.v1";
@@ -27,6 +23,9 @@ const RETIRED_SETTING_KEYS = [
   "animationsEnabled",
   "soundsEnabled",
   "timerBreaksFullscreen",
+  "idleMode",
+  "compactTimeoutMs",
+  "topMargin",
 ] as const;
 
 export function loadSettings(): AtollSettings {
@@ -41,10 +40,11 @@ export function loadSettings(): AtollSettings {
         typeof parsed.hideInFullscreen === "boolean"
           ? parsed.hideInFullscreen
           : DEFAULT_SETTINGS.hideInFullscreen,
-      idleMode: parsed.idleMode === "hidden" ? "hidden" : "reef",
-      compactTimeoutMs: clampNumber(parsed.compactTimeoutMs, 1600, 10000, DEFAULT_SETTINGS.compactTimeoutMs),
       expandedTimeoutMs: clampNumber(parsed.expandedTimeoutMs, 3000, 30000, DEFAULT_SETTINGS.expandedTimeoutMs),
-      topMargin: clampNumber(parsed.topMargin, 0, 48, DEFAULT_SETTINGS.topMargin),
+      // The Status Island is deliberately fixed to one visible top inset. Older
+      // releases persisted this as a user-adjustable offset, which can leave a
+      // migrated Island off its intended optical baseline.
+      topMargin: ISLAND_TOP_MARGIN,
     };
     if (RETIRED_SETTING_KEYS.some((key) => key in parsed)) saveSettings(settings);
     return settings;
@@ -63,7 +63,8 @@ function removeRetiredTimerState(): void {
 
 export function saveSettings(settings: AtollSettings): void {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    const { topMargin: _topMargin, ...persisted } = settings;
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(persisted));
   } catch {
     // Settings remain valid for this session even if storage is unavailable.
   }

@@ -18,12 +18,12 @@ Success means the app is useful as a persistent utility: it launches quickly, re
 
 ## Positioning
 
-Atoll is not a phone-style “dynamic island” replica. Its distinct mechanism is the Reef: a minimal dormant form that grows into Compact and Expanded states only when desktop context warrants it, preserving screen space and focus.
+Atoll is a Windows status island: it borrows the interaction grammar of a compact, continuously transforming status surface without copying Apple assets, product language, or device framing. Its distinct mechanism is the Reef, a minimal dormant island that grows into Compact and Expanded states only when desktop context warrants it, preserving screen space and focus.
 
 ## Operating Context
 
 - Windows 11 desktop sessions, including high-DPI, multi-monitor, negative-coordinate, portrait, ultrawide, and remote-desktop layouts.
-- The primary display’s physical top edge is the first-release anchor.
+- The primary display’s physical top-center is the first-release anchor; the Island holds an 8 DIP top inset so all four corners remain visible and clickable.
 - Users may be typing, watching full-screen media, gaming, or listening to media while Atoll remains resident.
 - The default global shortcut is `Ctrl + Shift + Space`.
 - Tray and context menus are always-available recovery and control surfaces.
@@ -48,7 +48,7 @@ Atoll is not a phone-style “dynamic island” replica. Its distinct mechanism 
 - English line: “Your status, surfaced.”
 - The brand metaphor is a small, stable atoll that carries activity and recedes to a reef.
 - Voice is concise, calm, useful, and never attention-seeking.
-- The Windows-native reef/tide identity is binding and follows the user’s Windows app theme in both light and dark modes; Atoll must not look like a generic system-control collage or a direct Apple pill copy.
+- The Windows-native reef/tide identity is binding. The Island remains a dense dark object in both light and dark Windows themes while its signal, focus, and neutral ramps adapt to the system; Atoll must not look like a generic system-control collage or a direct Apple pill copy.
 
 ## Evidence on Hand
 

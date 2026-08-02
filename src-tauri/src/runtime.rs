@@ -15,8 +15,8 @@ impl Default for RuntimeState {
         Self {
             transition_epoch: AtomicU64::new(0),
             window_mutation: Mutex::new(()),
-            top_margin_bits: AtomicU64::new(0.0_f64.to_bits()),
-            corner_radius_bits: AtomicU64::new(12.0_f64.to_bits()),
+            top_margin_bits: AtomicU64::new(8.0_f64.to_bits()),
+            corner_radius_bits: AtomicU64::new(16.0_f64.to_bits()),
         }
     }
 }

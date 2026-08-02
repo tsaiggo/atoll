@@ -69,13 +69,14 @@ let expandedExpiryDeadline = 0;
 let expandedSessionRevision = 0;
 let mediaProgressTickId: number | null = null;
 let volumeVisibleUntil = 0;
-let mediaFlashUntil = 0;
 let lastMediaIdentity = "";
+let mediaEventsReady = false;
 let pendingMediaCommand: MediaCommand | null = null;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
 let mediaCommandFeedbackId: number | null = null;
 let firstRun = previewMode ? false : consumeFirstRun();
 let animateNextShellContent = false;
+let shellTransitionResetId: number | null = null;
 let manuallyHidden = false;
 let shellRevision = 0;
 let nativeAcceptedShell: NativeAcceptedShell | null = null;
@@ -93,11 +94,8 @@ function isPreviewMode(value: string | null): value is PreviewMode {
 
 app.addEventListener("click", onClick);
 app.addEventListener("contextmenu", onContextMenu);
-app.addEventListener("pointerenter", onExpandedActivity);
-app.addEventListener("pointermove", onExpandedActivity);
 app.addEventListener("pointerdown", onExpandedActivity);
-app.addEventListener("pointerleave", onExpandedActivity);
-app.addEventListener("pointercancel", onExpandedActivity);
+app.addEventListener("wheel", onExpandedActivity, { passive: true });
 window.addEventListener("keydown", onKeyDown);
 reducedMotion.addEventListener("change", () => {
   render();
@@ -153,6 +151,7 @@ async function startApplication(): Promise<void> {
     return null;
   });
   if (initialMedia) updateMediaConnect(initialMedia);
+  mediaEventsReady = true;
 }
 
 function configurePreview(mode: PreviewMode): void {
@@ -256,11 +255,6 @@ async function runAction(action: string, value?: string): Promise<void> {
       break;
     case "toggle-setting":
       toggleSetting(value);
-      break;
-    case "set-idle":
-      settings = { ...settings, idleMode: value === "hidden" ? "hidden" : "reef" };
-      saveSettings(settings);
-      render();
       break;
     case "set-language":
       settings = { ...settings, language: normalizeLanguage(value) };
@@ -386,14 +380,26 @@ function updateMedia(payload: NativeMediaPayload | null, fromDemo = false): void
   lastMediaIdentity = mediaIdentity;
   if (fromDemo) mediaConnection = { status: "ready", sessionCount: 1 };
   scheduleMediaProgressTick();
-  if (next && trackChanged) {
-    mediaFlashUntil = Date.now() + settings.compactTimeoutMs;
-    reconcilePresentation();
-    scheduleVisibleTransientExpiry();
+  if (next && trackChanged && (fromDemo || mediaEventsReady)) {
+    surfaceEvent("media");
   } else {
     reconcilePresentation();
   }
-  render();
+  mediaEventsReady = true;
+}
+
+function surfaceEvent(panel: ExpandedPanel): void {
+  if (manuallyHidden || shouldHideForFullscreen()) {
+    reconcilePresentation();
+    return;
+  }
+  if (shell === "expanded") {
+    resetExpandedExpiry();
+    render();
+    return;
+  }
+  expandedPanel = panel;
+  void setShell("expanded");
 }
 
 function updateVolume(payload: NativeVolumePayload): void {
@@ -403,8 +409,7 @@ function updateVolume(payload: NativeVolumePayload): void {
   };
   if (payload.initial) return;
   volumeVisibleUntil = Date.now() + 1800;
-  if (manuallyHidden) return;
-  reconcilePresentation();
+  surfaceEvent("home");
   scheduleVisibleTransientExpiry();
 }
 
@@ -448,10 +453,6 @@ function reconcilePresentation(
     content = "idle";
   } else if (now < volumeVisibleUntil) {
     content = "volume";
-  } else if (now < mediaFlashUntil && media) {
-    content = "media";
-  } else if (media) {
-    content = "media";
   } else if (firstRun) {
     content = "welcome";
   } else {
@@ -461,7 +462,7 @@ function reconcilePresentation(
   if (preserveExpanded && shell === "expanded") {
     render();
   } else if (content === "idle") {
-    void setShell(settings.idleMode === "hidden" ? "hidden" : "reef", animate);
+    void setShell("reef", animate);
   } else {
     void setShell("compact", animate);
   }
@@ -488,6 +489,7 @@ async function setShell(
   if (previous !== next || forceNative) shellRevision += 1;
   const revision = shellRevision;
   animateNextShellContent = animated && previous !== next;
+  setShellTransition(previous, next, animateNextShellContent);
   shell = next;
   if (next !== "hidden") lastVisibleShell = next;
   render();
@@ -540,6 +542,39 @@ async function setShell(
   await operation;
 }
 
+function setShellTransition(
+  previous: ShellState,
+  next: ShellState,
+  animated: boolean,
+): void {
+  if (shellTransitionResetId !== null) {
+    window.clearTimeout(shellTransitionResetId);
+    shellTransitionResetId = null;
+  }
+
+  // Keep directional presentation state short-lived so ordinary metadata
+  // updates never replay a shell entrance motion.
+  const transition = !animated
+    ? ""
+    : previous === "compact" && next === "expanded"
+      ? "compact-expanded"
+      : previous === "reef" && next === "expanded"
+        ? "reef-expanded"
+        : previous === "expanded" && (next === "reef" || next === "compact")
+          ? "expanded-collapse"
+          : "";
+  if (!transition) {
+    delete app.dataset.transition;
+    return;
+  }
+
+  app.dataset.transition = transition;
+  shellTransitionResetId = window.setTimeout(() => {
+    delete app.dataset.transition;
+    shellTransitionResetId = null;
+  }, 320);
+}
+
 function setTransientExpiry(milliseconds: number): void {
   clearTransientExpiry();
   transientExpiryId = window.setTimeout(() => {
@@ -560,12 +595,7 @@ function clearTransientExpiry(): void {
 function scheduleVisibleTransientExpiry(): void {
   clearTransientExpiry();
   const now = Date.now();
-  const deadline =
-    now < volumeVisibleUntil
-      ? volumeVisibleUntil
-      : now < mediaFlashUntil && media
-        ? mediaFlashUntil
-        : 0;
+  const deadline = now < volumeVisibleUntil ? volumeVisibleUntil : 0;
   if (deadline > now) setTransientExpiry(deadline - now);
 }
 

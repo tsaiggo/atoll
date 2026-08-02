@@ -62,12 +62,13 @@ test.afterEach(() => {
   Reflect.deleteProperty(globalThis, "localStorage");
 });
 
-test("loads English when an existing v1 record predates the language field", () => {
+test("migrates an existing hidden idle preference to the visible Reef default", () => {
   storage.setItem(
     SETTINGS_KEY,
     JSON.stringify({
       hideInFullscreen: false,
       idleMode: "hidden",
+      compactTimeoutMs: 3200,
     }),
   );
 
@@ -75,7 +76,11 @@ test("loads English when an existing v1 record predates the language field", () 
 
   assert.equal(settings.language, "en");
   assert.equal(settings.hideInFullscreen, false);
-  assert.equal(settings.idleMode, "hidden");
+  const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<string, unknown>;
+  assert.equal("idleMode" in settings, false);
+  assert.equal("compactTimeoutMs" in settings, false);
+  assert.equal("idleMode" in stored, false);
+  assert.equal("compactTimeoutMs" in stored, false);
 });
 
 test("persists Simplified Chinese in the existing v1 settings record", () => {
@@ -97,6 +102,17 @@ test("falls back to English for an unsupported persisted language", () => {
   assert.equal(loadSettings().language, "en");
 });
 
+test("migrates legacy edge-attached margins to the Island's fixed visible inset", () => {
+  storage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({ ...DEFAULT_SETTINGS, topMargin: 12 }),
+  );
+
+  assert.equal(loadSettings().topMargin, 8);
+  const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<string, unknown>;
+  assert.equal("topMargin" in stored, false);
+});
+
 test("cleans retired timer data and settings during upgrade", () => {
   storage.setItem(RETIRED_TIMER_KEY, JSON.stringify({ endAt: 1_700_000_000_000 }));
   storage.setItem(
@@ -106,6 +122,8 @@ test("cleans retired timer data and settings during upgrade", () => {
       animationsEnabled: true,
       soundsEnabled: true,
       timerBreaksFullscreen: true,
+      idleMode: "hidden",
+      compactTimeoutMs: 3200,
     }),
   );
 
@@ -119,4 +137,6 @@ test("cleans retired timer data and settings during upgrade", () => {
   assert.equal("animationsEnabled" in stored, false);
   assert.equal("soundsEnabled" in stored, false);
   assert.equal("timerBreaksFullscreen" in stored, false);
+  assert.equal("idleMode" in stored, false);
+  assert.equal("compactTimeoutMs" in stored, false);
 });
