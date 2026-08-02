@@ -1,6 +1,14 @@
-use std::{thread, time::Duration};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
+
+#[cfg(not(target_os = "windows"))]
+use tauri::{LogicalPosition, LogicalSize};
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
 
 use crate::runtime::{
     corner_radius, is_current_transition, lock_window_mutation, next_transition_epoch,
@@ -16,9 +24,23 @@ struct MonitorSignature {
     scale_bits: u64,
 }
 
-// The Fluent Card surface is rendered inside the webview. Native code owns only
-// the exact-fit HWND policy and region so no rectangular compositor layer can
-// appear outside the CSS lower-corner silhouette.
+const SHELL_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+
+#[derive(Clone, Copy)]
+struct WindowPlacement {
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: u32,
+    scale: f64,
+    #[cfg(target_os = "windows")]
+    // HWND is a raw pointer and therefore not Send. The frame worker owns the
+    // integer handle value and rehydrates it only at the Win32 call boundary.
+    hwnd: isize,
+}
+
+// The Status Island surface is rendered inside the webview. Native code owns
+// the exact-fit HWND policy and four-corner region so no rectangular compositor
+// layer can appear outside the CSS silhouette.
 
 #[cfg(target_os = "windows")]
 fn apply_dwm_frame_policy(hwnd: windows::Win32::Foundation::HWND) {
@@ -180,33 +202,51 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         shell,
         width,
         height,
-        corner_radius,
+        corner_radius: requested_corner_radius,
         animated,
         top_margin,
     } = request;
-    let target_corner_radius = corner_radius.max(0.0);
-    let (epoch, start_width, start_height) = {
+    let target_corner_radius = requested_corner_radius.max(0.0);
+    let (epoch, start_width, start_height, start_corner_radius, placement) = {
         // Keep accepting a newer request and each native mutation mutually ordered.
         // An older frame can finish before this block, but it can never write after it.
         let runtime = window.state::<RuntimeState>();
         let _mutation = lock_window_mutation(&runtime);
         let epoch = next_transition_epoch(&runtime);
+        let start_corner_radius = corner_radius(&runtime);
         set_top_margin(&runtime, top_margin);
-        set_corner_radius(&runtime, target_corner_radius);
         if shell == "hidden" {
             window.hide().map_err(|error| error.to_string())?;
             return Ok(());
         }
 
+        let placement = capture_window_placement(&window)?;
         let current = window
             .inner_size()
             .map_err(|error| error.to_string())?
-            .to_logical::<f64>(window.scale_factor().map_err(|error| error.to_string())?);
-        (epoch, current.width.max(1.0), current.height.max(1.0))
+            .to_logical::<f64>(placement.scale);
+        (
+            epoch,
+            current.width.max(1.0),
+            current.height.max(1.0),
+            start_corner_radius,
+            placement,
+        )
     };
-    let steps = if animated { 12 } else { 1 };
-    let (first_width, first_height) =
-        shell_frame_geometry(1, steps, start_width, start_height, width, height);
+    let steps = if animated {
+        if width * height < start_width * start_height {
+            11
+        } else {
+            15
+        }
+    } else {
+        1
+    };
+    let (first_width, first_height, first_corner_radius) = if animated {
+        (start_width, start_height, start_corner_radius)
+    } else {
+        (width, height, target_corner_radius)
+    };
 
     {
         let runtime = window.state::<RuntimeState>();
@@ -214,39 +254,53 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         if !is_current_transition(&runtime, epoch) {
             return Ok(());
         }
+        set_corner_radius(&runtime, first_corner_radius);
 
-        resize_and_position(
+        resize_and_position_at(
             &window,
+            placement,
             first_width,
             first_height,
             top_margin,
-            target_corner_radius,
+            first_corner_radius,
         )?;
         show_without_focus(&window)?;
-        // ShowWindow is queued by the runtime. apply_shell_region starts with a
-        // synchronous scale-factor query, which drains that queue before SetWindowRgn.
-        // Reapplying here also makes a non-animated first frame safe.
-        apply_shell_region(&window, first_width, first_height, target_corner_radius)?;
     }
 
     if steps > 1 {
         let cloned_window = window.clone();
         thread::spawn(move || {
-            for step in 2..=steps {
-                thread::sleep(Duration::from_millis(16));
+            let transition_started = Instant::now();
+            for step in 1..=steps {
+                // Anchor each frame to the original deadline instead of sleeping
+                // after work. Window and region updates therefore cannot stretch
+                // the transition into a visibly uneven 20ms+ cadence.
+                let deadline = transition_started
+                    + Duration::from_millis(SHELL_FRAME_INTERVAL.as_millis() as u64 * step as u64);
+                if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+                    thread::sleep(remaining);
+                }
                 let (frame_width, frame_height) =
                     shell_frame_geometry(step, steps, start_width, start_height, width, height);
+                let frame_corner_radius = shell_frame_corner_radius(
+                    step,
+                    steps,
+                    start_corner_radius,
+                    target_corner_radius,
+                );
                 let runtime = cloned_window.state::<RuntimeState>();
                 let _mutation = lock_window_mutation(&runtime);
                 if !is_current_transition(&runtime, epoch) {
                     return;
                 }
-                if let Err(error) = resize_and_position(
+                set_corner_radius(&runtime, frame_corner_radius);
+                if let Err(error) = resize_and_position_at(
                     &cloned_window,
+                    placement,
                     frame_width,
                     frame_height,
                     top_margin,
-                    target_corner_radius,
+                    frame_corner_radius,
                 ) {
                     log::warn!("Unable to resize Atoll to the {shell} shell: {error}");
                     return;
@@ -266,11 +320,58 @@ fn shell_frame_geometry(
     target_height: f64,
 ) -> (f64, f64) {
     let progress = step as f64 / steps.max(1) as f64;
-    let eased = 1.0 - (1.0 - progress).powi(4);
+    let eased = progress * progress * (3.0 - 2.0 * progress);
     (
         start_width + (target_width - start_width) * eased,
         start_height + (target_height - start_height) * eased,
     )
+}
+
+fn shell_frame_corner_radius(
+    step: u32,
+    steps: u32,
+    start_corner_radius: f64,
+    target_corner_radius: f64,
+) -> f64 {
+    let progress = step as f64 / steps.max(1) as f64;
+    let eased = progress * progress * (3.0 - 2.0 * progress);
+    start_corner_radius + (target_corner_radius - start_corner_radius) * eased
+}
+
+fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
+    let monitor = window
+        .primary_monitor()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "No primary display is available".to_string())?;
+    let position = monitor.position();
+    let size = monitor.size();
+    #[cfg(target_os = "windows")]
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
+
+    Ok(WindowPlacement {
+        monitor_x: position.x,
+        monitor_y: position.y,
+        monitor_width: size.width,
+        scale: monitor.scale_factor(),
+        #[cfg(target_os = "windows")]
+        hwnd,
+    })
+}
+
+fn physical_window_frame(
+    monitor_x: i32,
+    monitor_y: i32,
+    monitor_width: u32,
+    scale: f64,
+    width: f64,
+    height: f64,
+    top_margin: f64,
+) -> (i32, i32, i32, i32) {
+    let physical_width = (width * scale).round().max(1.0) as i32;
+    let physical_height = (height * scale).round().max(1.0) as i32;
+    let x = monitor_x + ((monitor_width as f64 - physical_width as f64) / 2.0).round() as i32;
+    let y = monitor_y + (top_margin * scale).round() as i32;
+    (x, y, physical_width, physical_height)
 }
 
 fn resize_and_position(
@@ -280,44 +381,106 @@ fn resize_and_position(
     top_margin: f64,
     target_corner_radius: f64,
 ) -> Result<(), String> {
-    window
-        .set_size(LogicalSize::new(width, height))
-        .map_err(|error| error.to_string())?;
+    let placement = capture_window_placement(window)?;
+    resize_and_position_at(
+        window,
+        placement,
+        width,
+        height,
+        top_margin,
+        target_corner_radius,
+    )
+}
 
-    let monitor = window
-        .primary_monitor()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "No primary display is available".to_string())?;
-    let scale = monitor.scale_factor();
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
-    let monitor_x = monitor_position.x as f64 / scale;
-    let monitor_y = monitor_position.y as f64 / scale;
-    let monitor_width = monitor_size.width as f64 / scale;
-    let x = monitor_x + (monitor_width - width) / 2.0;
-    let y = monitor_y + top_margin;
+fn resize_and_position_at(
+    window: &WebviewWindow,
+    placement: WindowPlacement,
+    width: f64,
+    height: f64,
+    top_margin: f64,
+    target_corner_radius: f64,
+) -> Result<(), String> {
+    let (x, y, physical_width, physical_height) = physical_window_frame(
+        placement.monitor_x,
+        placement.monitor_y,
+        placement.monitor_width,
+        placement.scale,
+        width,
+        height,
+        top_margin,
+    );
 
-    window
-        .set_position(LogicalPosition::new(x, y))
-        .map_err(|error| error.to_string())?;
-    apply_shell_region(window, width, height, target_corner_radius)?;
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+        };
+
+        // One SetWindowPos keeps position and size in the same compositor
+        // transaction. The supported Tauri calls previously dispatched them
+        // separately for every frame, which is especially noticeable on a
+        // transparent WebView while Windows is rebuilding its surface.
+        unsafe {
+            SetWindowPos(
+                HWND(placement.hwnd as *mut std::ffi::c_void),
+                None,
+                x,
+                y,
+                physical_width,
+                physical_height,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
+            )
+            .map_err(|error| error.to_string())?;
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        window
+            .set_size(LogicalSize::new(width, height))
+            .map_err(|error| error.to_string())?;
+        window
+            .set_position(LogicalPosition::new(
+                x as f64 / placement.scale,
+                y as f64 / placement.scale,
+            ))
+            .map_err(|error| error.to_string())?;
+    }
+
+    apply_shell_region_at(window, placement, width, height, target_corner_radius)?;
     Ok(())
 }
 
-fn apply_shell_region(
+fn apply_shell_region_at(
     window: &WebviewWindow,
+    placement: WindowPlacement,
     width: f64,
     height: f64,
     target_corner_radius: f64,
 ) -> Result<(), String> {
     let effective_radius = effective_corner_radius(target_corner_radius, width, height);
-    apply_window_region(window, width, height, effective_radius)
+    #[cfg(target_os = "windows")]
+    {
+        let _ = window;
+        apply_window_region(
+            placement.hwnd,
+            placement.scale,
+            width,
+            height,
+            effective_radius,
+        )
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = placement;
+        apply_window_region(window, width, height, effective_radius)
+    }
 }
 
 fn effective_corner_radius(target_radius: f64, width: f64, height: f64) -> f64 {
     target_radius
         .max(0.0)
-        .min(height.max(0.0))
+        .min((height.max(0.0) / 2.0).max(0.0))
         .min((width.max(0.0) / 2.0).max(0.0))
 }
 
@@ -339,17 +502,47 @@ struct WindowRegionBands {
 }
 
 #[cfg(target_os = "windows")]
-fn corner_pixel_coverage(radius: f64, center_y: f64, x: i32, y: i32) -> f64 {
+fn corner_pixel_coverage(radius: f64, center_y: f64, x: i32, y: i32, top_corner: bool) -> f64 {
     const SAMPLES: usize = 32;
 
     let mut coverage = 0.0;
     for sample in 0..SAMPLES {
         let sample_y = y as f64 + (sample as f64 + 0.5) / SAMPLES as f64;
-        let dy = (sample_y - center_y).clamp(0.0, radius);
+        let dy = if top_corner {
+            (center_y - sample_y).clamp(0.0, radius)
+        } else {
+            (sample_y - center_y).clamp(0.0, radius)
+        };
         let boundary_x = radius - (radius * radius - dy * dy).max(0.0).sqrt();
         coverage += (x as f64 + 1.0 - boundary_x).clamp(0.0, 1.0);
     }
     coverage / SAMPLES as f64
+}
+
+#[cfg(target_os = "windows")]
+fn rounded_rect_row_inset(radius: f64, physical_height: i32, y: i32) -> i32 {
+    const MIN_VISIBLE_COVERAGE: f64 = 0.05;
+
+    if radius <= f64::EPSILON {
+        return 0;
+    }
+    let top_corner = (y as f64) < radius;
+    let bottom_corner = (y as f64) >= physical_height as f64 - radius;
+    if !top_corner && !bottom_corner {
+        return 0;
+    }
+
+    let use_top_corner = top_corner;
+    let center_y = if use_top_corner {
+        radius
+    } else {
+        physical_height as f64 - radius
+    };
+    (0..=radius.ceil() as i32)
+        .find(|x| {
+            corner_pixel_coverage(radius, center_y, *x, y, use_top_corner) >= MIN_VISIBLE_COVERAGE
+        })
+        .unwrap_or_else(|| radius.ceil() as i32)
 }
 
 #[cfg(target_os = "windows")]
@@ -363,26 +556,16 @@ fn window_region_bands(
     let physical_height = (height * scale).round().max(1.0) as i32;
     let physical_radius = (logical_radius * scale)
         .max(0.0)
-        .min(physical_height as f64)
+        .min(physical_height as f64 / 2.0)
         .min(physical_width as f64 / 2.0);
-    let curve_top = physical_height as f64 - physical_radius;
-    const MIN_VISIBLE_COVERAGE: f64 = 0.05;
     let mut bands: Vec<WindowRegionBand> = Vec::new();
 
     for y in 0..physical_height {
-        let inset = if physical_radius <= f64::EPSILON || (y as f64) < curve_top {
-            0
-        } else {
-            // Chromium discards subpixel fragments below roughly five percent
-            // coverage. Mirroring that threshold avoids both clipping the visible
-            // contour and exposing Acrylic in fully transparent CSS pixels.
-            (0..=physical_radius.ceil() as i32)
-                .find(|x| {
-                    corner_pixel_coverage(physical_radius, curve_top, *x, y) >= MIN_VISIBLE_COVERAGE
-                })
-                .unwrap_or_else(|| physical_radius.ceil() as i32)
-        }
-        .min(physical_width / 2);
+        // Chromium discards subpixel fragments below roughly five percent
+        // coverage. Mirroring that threshold keeps CSS's visible contour and the
+        // native hit region aligned at all four Island corners.
+        let inset =
+            rounded_rect_row_inset(physical_radius, physical_height, y).min(physical_width / 2);
         let right = physical_width - inset;
 
         if let Some(previous) = bands.last_mut() {
@@ -408,7 +591,8 @@ fn window_region_bands(
 
 #[cfg(target_os = "windows")]
 fn apply_window_region(
-    window: &WebviewWindow,
+    hwnd: isize,
+    scale: f64,
     width: f64,
     height: f64,
     logical_radius: f64,
@@ -417,15 +601,14 @@ fn apply_window_region(
         CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_ERROR, RGN_OR,
     };
 
-    let scale = window.scale_factor().map_err(|error| error.to_string())?;
     let geometry = window_region_bands(width, height, logical_radius, scale);
-    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
     let first = geometry
         .bands
         .first()
         .ok_or_else(|| "Unable to create an empty Atoll click region".to_string())?;
 
     unsafe {
+        let hwnd = HWND(hwnd as *mut std::ffi::c_void);
         let region = CreateRectRgn(first.left, first.top, first.right, first.bottom);
         if region.is_invalid() {
             return Err("Unable to create the Atoll click region".to_string());
@@ -445,7 +628,9 @@ fn apply_window_region(
             }
         }
 
-        if SetWindowRgn(hwnd, Some(region), true) == 0 {
+        // SetWindowPos has already invalidated this frame. Avoid asking GDI for
+        // a second synchronous repaint solely for the hit-test contour.
+        if SetWindowRgn(hwnd, Some(region), false) == 0 {
             let _ = DeleteObject(region.into());
             return Err("Unable to apply the Atoll click region".to_string());
         }
@@ -466,7 +651,8 @@ fn apply_window_region(
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
     use super::{
-        effective_corner_radius, shell_frame_geometry, window_region_bands, WindowRegionBands,
+        effective_corner_radius, physical_window_frame, shell_frame_corner_radius,
+        shell_frame_geometry, window_region_bands, WindowRegionBands,
     };
 
     fn contains(region: &WindowRegionBands, x: i32, y: i32) -> bool {
@@ -476,61 +662,70 @@ mod tests {
             .any(|band| x >= band.left && x < band.right && y >= band.top && y < band.bottom)
     }
 
+    fn row_inset(region: &WindowRegionBands, y: i32) -> i32 {
+        region
+            .bands
+            .iter()
+            .find(|band| y >= band.top && y < band.bottom)
+            .map(|band| band.left)
+            .expect("every physical row should have a hit region band")
+    }
+
     #[test]
     fn effective_corner_radius_matches_css_constraints() {
-        assert_eq!(effective_corner_radius(12.0, 80.0, 12.0), 12.0);
-        assert_eq!(effective_corner_radius(22.0, 188.0, 12.0), 12.0);
-        assert_eq!(effective_corner_radius(22.0, 188.0, 44.0), 22.0);
-        assert_eq!(effective_corner_radius(12.0, 384.0, 148.0), 12.0);
+        assert_eq!(effective_corner_radius(16.0, 96.0, 32.0), 16.0);
+        assert_eq!(effective_corner_radius(28.0, 256.0, 56.0), 28.0);
+        assert_eq!(effective_corner_radius(28.0, 400.0, 176.0), 28.0);
+        assert_eq!(effective_corner_radius(28.0, 256.0, 28.0), 14.0);
         assert_eq!(effective_corner_radius(30.0, 40.0, 80.0), 20.0);
     }
 
     #[test]
-    fn target_radius_stays_css_synchronized_during_animation() {
-        for frame_height in 44..=148 {
-            assert_eq!(
-                effective_corner_radius(12.0, 384.0, f64::from(frame_height)),
-                12.0
-            );
-            assert_eq!(
-                effective_corner_radius(22.0, 188.0, f64::from(frame_height)),
-                22.0
-            );
+    fn shell_animation_morphs_geometry_and_radius_on_the_same_curve() {
+        let start = (96.0, 32.0, 16.0);
+        let target = (400.0, 176.0, 28.0);
+        let steps = 12;
+        let mut previous = start;
+        for step in 0..=steps {
+            let (width, height) =
+                shell_frame_geometry(step, steps, start.0, start.1, target.0, target.1);
+            let radius = shell_frame_corner_radius(step, steps, start.2, target.2);
+            assert!(width >= previous.0);
+            assert!(height >= previous.1);
+            assert!(radius >= previous.2);
+            assert!(radius <= height / 2.0);
+            previous = (width, height, radius);
         }
-        for frame_height in 12..=44 {
-            assert_eq!(
-                effective_corner_radius(22.0, 188.0, f64::from(frame_height)),
-                f64::from(frame_height).min(22.0)
-            );
+        assert_eq!(previous, target);
+    }
+
+    #[test]
+    fn shell_frames_stay_centered_in_physical_pixels() {
+        for (width, height) in [(96.0, 32.0), (256.0, 56.0), (400.0, 176.0)] {
+            let (x, y, physical_width, physical_height) =
+                physical_window_frame(-1920, 0, 2880, 1.5, width, height, 8.0);
+            assert_eq!(x * 2 + physical_width, -1920 * 2 + 2880);
+            assert_eq!(y, 12);
+            assert_eq!(physical_width, (width * 1.5) as i32);
+            assert_eq!(physical_height, (height * 1.5) as i32);
         }
     }
 
     #[test]
-    fn shell_animation_reaches_the_exact_target() {
-        let first = shell_frame_geometry(1, 12, 188.0, 44.0, 384.0, 148.0);
-        assert!(first.0 > 188.0 && first.0 < 384.0);
-        assert!(first.1 > 44.0 && first.1 < 148.0);
-        assert_eq!(
-            shell_frame_geometry(12, 12, 188.0, 44.0, 384.0, 148.0),
-            (384.0, 148.0)
-        );
-        assert_eq!(
-            shell_frame_geometry(1, 1, 188.0, 44.0, 384.0, 148.0),
-            (384.0, 148.0)
-        );
-    }
-
-    #[test]
-    fn region_bands_are_symmetric_at_supported_scales() {
+    fn island_region_bands_are_symmetric_at_supported_scales() {
         let cases = [
-            (384.0, 148.0, 12.0, 1.0),
-            (384.0, 148.0, 12.0, 1.25),
-            (384.0, 148.0, 12.0, 1.5),
-            (384.0, 148.0, 12.0, 2.0),
-            (188.0, 44.0, 22.0, 1.0),
-            (188.0, 44.0, 22.0, 1.25),
-            (188.0, 44.0, 22.0, 1.5),
-            (188.0, 44.0, 22.0, 2.0),
+            (96.0, 32.0, 16.0, 1.0),
+            (96.0, 32.0, 16.0, 1.25),
+            (96.0, 32.0, 16.0, 1.5),
+            (96.0, 32.0, 16.0, 2.0),
+            (256.0, 56.0, 28.0, 1.0),
+            (256.0, 56.0, 28.0, 1.25),
+            (256.0, 56.0, 28.0, 1.5),
+            (256.0, 56.0, 28.0, 2.0),
+            (400.0, 176.0, 28.0, 1.0),
+            (400.0, 176.0, 28.0, 1.25),
+            (400.0, 176.0, 28.0, 1.5),
+            (400.0, 176.0, 28.0, 2.0),
         ];
 
         for (width, height, radius, scale) in cases {
@@ -540,72 +735,36 @@ mod tests {
                 region.bands.last().map(|band| band.bottom),
                 Some(region.physical_height)
             );
-            let mut previous_left = 0;
             for band in &region.bands {
                 assert_eq!(band.left + band.right, region.physical_width);
-                assert!(band.left >= previous_left);
                 assert!(band.top < band.bottom);
-                previous_left = band.left;
+            }
+            for y in 0..region.physical_height {
+                assert_eq!(
+                    row_inset(&region, y),
+                    row_inset(&region, region.physical_height - 1 - y)
+                );
             }
         }
     }
 
     #[test]
-    fn expanded_region_contains_visible_css_edge_at_150_percent() {
-        let region = window_region_bands(384.0, 148.0, 12.0, 1.5);
-        let left_edge = [
-            (0, 209),
-            (1, 211),
-            (2, 213),
-            (3, 214),
-            (4, 216),
-            (5, 217),
-            (7, 218),
-            (10, 220),
-            (12, 221),
-        ];
-        for (x, y) in left_edge {
-            assert!(contains(&region, x, y));
-            assert!(contains(&region, region.physical_width - 1 - x, y));
-        }
-        let transparent_points = [
-            (0, 210),
-            (1, 212),
-            (2, 214),
-            (3, 215),
-            (4, 217),
-            (6, 218),
-            (9, 220),
-            (11, 221),
-        ];
-        for (x, y) in transparent_points {
-            assert!(!contains(&region, x, y));
-            assert!(!contains(&region, region.physical_width - 1 - x, y));
-        }
-    }
-
-    #[test]
-    fn compact_region_contains_visible_css_edge_at_150_percent() {
-        let region = window_region_bands(188.0, 44.0, 22.0, 1.5);
-        let left_edge = [
-            (0, 37),
-            (1, 43),
-            (2, 46),
-            (3, 48),
-            (4, 50),
-            (7, 53),
-            (7, 54),
-            (13, 59),
-            (25, 65),
-        ];
-        for (x, y) in left_edge {
-            assert!(contains(&region, x, y));
-            assert!(contains(&region, region.physical_width - 1 - x, y));
-        }
-        let transparent_points = [(0, 41), (1, 44), (6, 53), (12, 59), (21, 64), (24, 65)];
-        for (x, y) in transparent_points {
-            assert!(!contains(&region, x, y));
-            assert!(!contains(&region, region.physical_width - 1 - x, y));
+    fn island_regions_exclude_all_transparent_corners_at_150_percent() {
+        for (width, height, radius) in [
+            (96.0, 32.0, 16.0),
+            (256.0, 56.0, 28.0),
+            (400.0, 176.0, 28.0),
+        ] {
+            let region = window_region_bands(width, height, radius, 1.5);
+            let middle_x = region.physical_width / 2;
+            let last_x = region.physical_width - 1;
+            let last_y = region.physical_height - 1;
+            assert!(!contains(&region, 0, 0));
+            assert!(!contains(&region, last_x, 0));
+            assert!(!contains(&region, 0, last_y));
+            assert!(!contains(&region, last_x, last_y));
+            assert!(contains(&region, middle_x, 0));
+            assert!(contains(&region, middle_x, last_y));
         }
     }
 }

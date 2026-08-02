@@ -1,251 +1,103 @@
 ---
 name: Atoll
-description: Your status, surfaced.
+description: A quiet Windows status island for media, volume, and quick controls.
 colors:
-  reef-black: "#202020"
-  raised-basin: "rgba(255, 255, 255, 0.0605)"
-  soft-basin: "rgba(255, 255, 255, 0.0837)"
-  foam-white: "#f5f7f7"
-  mist-text: "#aab5b2"
-  quiet-slate: "#7f8c88"
-  tide-mint: "#65d6c5"
-  tide-mint-bright: "#79dfcf"
-  tide-ink: "#071511"
-  acrylic-dark-fallback: "#2c2c2c"
-  acrylic-light-fallback: "#f9f9f9"
-  card-fill-dark: "rgba(255, 255, 255, 0.051)"
-  card-fill-light: "rgba(255, 255, 255, 0.702)"
-  card-stroke-dark: "rgba(0, 0, 0, 0.098)"
-  card-stroke-light: "rgba(0, 0, 0, 0.059)"
-  meter-track: "#35413e"
-  switch-track: "#353b44"
-  switch-thumb: "#d8dde4"
-  light-reef: "#f9f9f9"
-  light-raised-basin: "rgba(255, 255, 255, 0.702)"
-  light-soft-basin: "rgba(0, 0, 0, 0.0373)"
-  light-foam: "rgba(0, 0, 0, 0.894)"
-  light-mist: "rgba(0, 0, 0, 0.620)"
-  light-tide: "#16786c"
+  island-black: "#000000"
+  island-raised: "#151518"
+  island-raised-hover: "#1d1d20"
+  island-text: "#f5f5f7"
+  island-secondary: "#aeaeb2"
+  island-tertiary: "#6e6e73"
+  island-signal: "#78e2d1"
+  media-emphasis: "#f5f5f7"
 typography:
-  title:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "13px"
-    fontWeight: 650
-    lineHeight: 1.2
-    letterSpacing: "-0.015em"
-  body:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "12px"
-    fontWeight: 620
-    lineHeight: 1.33
-    letterSpacing: "-0.01em"
-  label:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "9.5px"
-    fontWeight: 600
-    lineHeight: 1.35
-    letterSpacing: "normal"
-  control:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "10.5px"
-    fontWeight: 620
-    lineHeight: 1.2
-    letterSpacing: "normal"
-  value:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "11px"
-    fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "normal"
-  tiny:
-    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
-    fontSize: "9.5px"
-    fontWeight: 500
-    lineHeight: 1.2
-    letterSpacing: "normal"
-rounded:
-  hairline: "2px"
-  tide-line: "3px"
-  small: "8px"
-  control-soft: "8px"
-  control: "8px"
-  compact-inset: "9px"
-  compact-artwork: "10px"
-  switch-track: "10px"
-  medium: "12px"
-  card: "8px"
-  compact-radius: "22px"
-  expanded-radius: "12px"
-  reef: "0 0 12px 12px"
-  compact: "0 0 22px 22px"
-  expanded: "0 0 12px 12px"
-  circle: "50%"
-spacing:
-  hairline: "2px"
-  tight: "5px"
-  control: "8px"
-  standard: "12px"
-  shell: "14px"
-components:
-  shell-compact:
-    backgroundColor: "WinUI material fallback + theme Card fill + semantic wash"
-    textColor: "{colors.foam-white}"
-    typography: "{typography.body}"
-    rounded: "{rounded.compact}"
-    padding: "5px 9px 5px 7px"
-    size: "188px × 44px"
-  shell-expanded:
-    backgroundColor: "WinUI material fallback + theme Card fill + semantic wash"
-    textColor: "{colors.foam-white}"
-    typography: "{typography.body}"
-    rounded: "{rounded.expanded}"
-    padding: "8px 16px"
-    size: "384px × 148px"
-  media-transport:
-    backgroundColor: "{colors.raised-basin}"
-    textColor: "{colors.tide-mint} for Play/Pause; {colors.mist-text} otherwise"
-    rounded: "{rounded.circle}"
-    size: "42px primary; 36px secondary"
-  card-media:
-    backgroundColor: "transparent; {colors.raised-basin} on hover"
-    textColor: "{colors.foam-white}"
-    rounded: "{rounded.card}"
-    padding: "7px 8px"
-  toggle-on:
-    backgroundColor: "{colors.tide-mint}"
-    textColor: "{colors.tide-ink}"
-    rounded: "{rounded.circle}"
-    size: "30px × 17px"
+  family: "Segoe UI Variable Text, Segoe UI, sans-serif"
+  compact-title: "12.5px / 15px"
+  media-title: "14px / 16px"
+  metadata: "10–10.5px"
+geometry:
+  top-inset: "8 DIP fixed"
+  reef: "96 × 32 DIP; 16 DIP radius"
+  compact: "256 × 56 DIP; 28 DIP radius"
+  expanded: "400 × 176 DIP; 28 DIP radius"
 ---
 
-# Design System: Atoll
+# Atoll Design System
 
-## Overview
+## Intent
 
-**Creative North Star: "The Quiet Tide Line"**
+Atoll is a Windows status island: a small, centered, always-on-top surface that expands only when status needs attention. It borrows the interaction grammar of a compact media island—one dark shape that changes size and releases content in stages—without copying Apple artwork, icons, or hardware framing.
 
-Atoll is an edge-attached instrument that feels grown from the top of the display rather than placed on it. Its shell follows the Windows app theme through the official material fallback colors, WinUI Card fill, a restrained semantic wash, and a single Card contour; one thin tide line remains the Atoll signature. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.
+The visual identity is deliberately spare. The pure-black shell, Segoe typography, one mint live signal, and exact centered placement are more important than decorative material or a dense widget layout. It is not an edge-attached card and it must not become a light Fluent panel.
 
-The shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life, while transient system feedback uses a restrained module wash rather than another permanent accent.
+## Shell contract
 
-**Key Characteristics:**
+| State | Geometry | Purpose |
+| --- | --- | --- |
+| Reef | 96 × 32 DIP, radius 16 | Persistent entry point: Atoll mark plus a small activity dot. |
+| Compact | 256 × 56 DIP, radius 28 | A short status or now-playing summary. It can hold a 40 DIP cover, two ellipsized text lines, and a 34 DIP primary action. |
+| Expanded | 400 × 176 DIP, radius 28 | Home, media, or settings panel. |
 
-- Edge-attached silhouettes with open top edges and rounded lower corners.
-- Dense information hierarchy sized for a glance, not a dashboard.
-- A single tide-line signature shared across every shell state.
-- Fluent Card material, one functional module wash, and one precise contour instead of decorative highlights.
-- Authored outline icons and tabular numerals for changing values.
+- Every state is top-centered on the primary display with a visible, fixed 8 DIP inset. The window is not attached to the monitor edge.
+- Every state owns four rounded corners. CSS clips the content to the full rounded rectangle, and the Windows native region follows the same all-corner geometry at the current DPI so no rectangular hit area or compositor spill is exposed.
+- The host window is transparent, decorationless, non-focusable, always on top, absent from the taskbar, and has no platform shadow. The visible Island itself supplies the silhouette.
+- Native sizing and centering are updated together on the same 16ms transition frame through Tauri's supported window API. Keep both values in the same native transition; do not let CSS independently reposition the Island.
 
-## Colors
+## Color and material
 
-The palette is a submerged neutral field with one cool living accent. Windows light/dark preference is the source of truth and changes must repaint in place without rebuilding or focusing the window. Light mode uses deeper teal and system-aligned neutral fills so controls retain contrast instead of merely inverting the dark palette.
+The Island is pure black in both Windows themes (`#000000`) with no visible outer contour or drop shadow. Light mode does not turn it into a white widget: it only adjusts the signal and neutral ramps so the Island remains a consistent object against the desktop.
 
-### Primary
+- `#f5f5f7`: primary text and the primary play/pause button.
+- `#aeaeb2`: secondary metadata and secondary transport controls.
+- `#6e6e73`: low-priority information and disabled states.
+- `#f5f5f7`: media progress and the primary play/pause control.
+- `#78e2d1`: the one Atoll live signal—for the Reef activity dot and keyboard focus only.
+- `#151518` and `#1d1d20`: internal raised and hover surfaces only.
 
-- **Tide Mint:** The brand signal for the tide line, active controls, focus outlines, and selected states. Its brighter partner is hover-only.
+Do not introduce acrylic blur, broad tinted module backgrounds, ornamental glows, a separate shadow gutter, or multiple accent colors. Depth comes from the uninterrupted black silhouette and a small number of neutral tonal steps.
 
-### Neutral
+## Typography and content density
 
-- **Acrylic Fallback:** The system-aligned solid backing used by the exact-fit native shell. It avoids rectangular compositor spill outside Atoll's lower corners.
-- **Card Fill:** The official WinUI Card overlay above the fallback backing in each theme.
-- **Card Stroke:** One official WinUI contour around the complete shell.
-- **Module Wash:** A low-opacity material tint beneath content: mint for media and blue for transient volume feedback. It identifies state without recoloring text or controls.
-- **Raised Basin:** Hovered rows and secondary buttons.
-- **Soft Basin:** Gentle hover and nested-control separation.
-- **Foam White:** Primary text and high-confidence values.
-- **Mist Text:** Supporting labels and metadata.
-- **Quiet Slate:** Low-priority hints and shortcut labels.
-- **Light Reef:** A neutral Windows Card surface with dark system text and the same one-pixel contour.
+Use `Segoe UI Variable Text`, then `Segoe UI`, then `sans-serif`. Media and status copy is single-line and ellipsized; no marquee or permanent scrolling text is allowed. Primary media titles use 14/16, compact titles use 12.5/15, and metadata stays near 10–10.5px.
 
-**The One Tide Rule.** Mint should remain a minority of the visible surface; use it to explain state, not to decorate empty space.
+The media cover is an anchor rather than decoration: 40 × 40 DIP in Compact and Home, 52 × 52 DIP in Expanded, all with a 12 DIP radius and a subtle inset edge. In Expanded Media, previous/next are quiet 36 DIP circles and the white play/pause control is 44 DIP. Keep unavailable commands visible but subdued and non-actionable.
 
-## Typography
+## Expanded panels
 
-**Display Font:** Segoe UI Variable Text (with Segoe UI and sans-serif fallbacks)
-**Body Font:** Segoe UI Variable Text (with Segoe UI and sans-serif fallbacks)
+Expanded has exactly three contexts:
 
-**Character:** The family keeps Atoll aligned with Windows while variable weights and tight negative tracking give changing status values a deliberate instrument-like quality.
+- **Home:** Atoll identity, inline system volume, a settings affordance, and the current media summary.
+- **Media:** cover and two-line metadata, optional progress, previous/play-next transport, and source feedback.
+- **Settings:** Chinese/English language selection and the fullscreen-hide switch. Settings remain deliberately short.
 
-### Hierarchy
+Controls use authored outline icons, explicit accessible labels, visible keyboard focus, and tabular numerals for changing time or volume. A context menu remains available from secondary click.
 
-- **Title:** Product, settings, and panel titles.
-- **Body:** Compact primary text, media titles, and action labels.
-- **Label:** Artists, sources, state descriptions, and tertiary controls.
+## Behavior
 
-**The One-Glance Rule.** Compact text is always single-line and ellipsized; Atoll never uses a permanent marquee.
+- Reef opens to Expanded only on click; hover is visual feedback only.
+- A meaningful track change or system-volume update may open the relevant Expanded panel. Manual hide and fullscreen suppression take priority.
+- Expanded collapses after the configured idle interval (7 seconds by default). Pointer-down, mouse-wheel activity, keyboard activity, and in-panel actions refresh that interval. A pending media command also prevents a premature collapse.
+- Clicking the non-action area of an expanded Island collapses it; Escape collapses it as well.
+- On collapse, ordinary idle content returns to Reef rather than leaving a shrunken media card on screen.
 
-## Layout
+## Motion
 
-Atoll is anchored to the physical top-center of the primary display. Its nominal shells are Reef at 80 × 12 DIP, Compact at 188 × 44 DIP, and Expanded at 384 × 148 DIP. The top edge stays visually open while the lower corners carry the silhouette.
+The outer shape is native, not a CSS scale effect. Width, height, and corner radius follow the same smoothstep curve at 16ms target frames: expansion uses 15 frames (about 240ms) and contraction uses 11 (about 176ms). Each Windows frame applies size and centered position together in one native compositor transaction, reuses the captured monitor metrics, and is scheduled against the original transition deadline so frame work cannot accumulate into a slower cadence. A newer shell request invalidates an older native transition before it can write another frame.
 
-Expanded uses three short rows—header, one task area, footer—with no more than three major operation groups. Its 16 DIP horizontal inset and 4/8/16 rhythm borrow the calm density of Windows Widgets. Album art and state glyphs occupy the leading edge; the highest-value action sits at the trailing edge or the optical center.
+Content follows the established black volume instead of racing the geometry: Compact reveals its cover/copy/actions after short 56–104ms offsets; Expanded releases header, body, controls, and footer in a 56–120ms sequence. The Compact-to-Expanded media path treats the cover as the shared visual anchor with a 236ms transform; collapse gives the Reef mark one short 120ms settle. Ordinary metadata and progress updates must not replay an entrance animation. `prefers-reduced-motion` shortens animations and transitions to a near-instant state change.
 
-The native host, not CSS media queries, owns display scaling and repositioning. Content must remain clipped and legible at 125%, 150%, and 200% scaling, including on displays with negative desktop coordinates.
+## Guardrails
 
-## Elevation & Depth
+Do:
 
-Atoll uses the official WinUI material fallback color as its native backing and the official Card fill as its content layer. A very soft directional highlight and state-specific material wash restore depth when a true system backdrop is unavailable; each wash stays below content and remains deliberately weaker in light mode. Top-level Accent Acrylic is intentionally disabled because Windows paints that visual to the rectangular HWND instead of reliably honoring Atoll's asymmetric region. Nested surfaces are differentiated by subtle Fluent neutral fills. The exact-fit transparent host does not reserve an external shadow gutter, so the shell uses one inset Card contour and no hand-drawn halo.
+- Preserve the three shell sizes, full-corner geometry, and top-center inset unless the native region and CSS are changed together.
+- Make one content hierarchy readable at a glance, with one primary action at most.
+- Reserve mint for Reef activity and keyboard focus; media playback itself is neutral black and white.
+- Keep theme changes in place without stealing focus or changing the user’s current panel.
 
-### Shadow Vocabulary
+Do not:
 
-- **Shell Contour:** One low-contrast inset pixel using `CardStrokeColorDefault`; no separate top highlight or lower lowlight.
-
-**The Basin Rule.** Add depth by changing surface tone before adding another shadow.
-
-## Shapes
-
-The top edge is flush to the display. Reef uses the smallest lower-corner curve, Compact keeps Atoll's shallow hanging capsule, and Expanded settles into a restrained 12 DIP Windows widget-scale curve. Nested cards and rectangular controls use an 8 DIP radius; transport and status glyphs may be circular when their action is atomic.
-
-The logo is a sturdy incomplete elliptical ring with negative space. It must remain recognizable at tray scale and should never be replaced by a detailed illustration or a thin decorative orbit.
-
-## Components
-
-### Buttons
-
-- **Shape:** Compact rounded rectangles for text actions; circles for transport controls.
-- **Primary transport:** A 42 DIP neutral circle with a Tide Mint glyph, restrained edge, and top glint.
-- **Secondary transport:** A 36 DIP neutral circle with Mist Text; hover lifts the tone and text contrast.
-- **Hover / Focus:** Hover uses color and tonal shifts only. Keyboard focus uses a two-pixel Tide Mint inset outline.
-
-### Chips
-
-- **Style:** Segmented settings use small tonal chips with concise labels.
-- **State:** Selected settings invert to Tide Mint and Tide Ink.
-
-### Cards / Containers
-
-- **Corner Style:** Generous nested-card curve.
-- **Background:** Media rows are transparent at rest and lift to Raised Basin on hover; denser setting rows may use a basin at rest.
-- **Shadow Strategy:** No nested shadows.
-- **Internal Padding:** Tight, vertically centered spacing suited to the fixed-height shell.
-
-### Atoll Shell
-
-Reef, Compact, and Expanded share the outer color, tide-line signature, top attachment, and lower-corner grammar. Native window resizing drives the silhouette; content is re-rendered inside the same surface. Same-shape status updates—especially volume—must not replay the shell transition.
-
-### Media Transport
-
-Previous and Next are quiet 36 DIP circular controls. Play/Pause is a larger 42 DIP circle with a Tide Mint glyph and subtle material depth. Unsupported transport commands remain visible only when their absence would not mislead; otherwise they are disabled with reduced opacity.
-
-### Settings Toggle
-
-The switch is a short dark track with a solid circular thumb. The on state uses a translucent mint track and mint thumb; the label remains neutral so multiple enabled settings do not create a wall of accent color.
-
-## Do's and Don'ts
-
-### Do:
-
-- **Do** let the tide line and shell transformation carry the brand.
-- **Do** keep the most important value readable in a peripheral glance.
-- **Do** use tabular numerals for changing percentages.
-- **Do** update content in-place when the shell size does not change.
-- **Do** follow the live Windows app theme without changing window geometry, focus, or current state.
-- **Do** preserve a clear icon, label, or shape cue in addition to semantic color.
-
-### Don't:
-
-- **Don't** turn Expanded into a dashboard or add a fourth content row.
-- **Don't** use permanent scrolling text, pulsing glows, or decorative idle animation.
-- **Don't** round the top corners into a detached Apple-style pill.
-- **Don't** mix icon families or substitute text glyphs for product icons.
-- **Don't** add borders and shadows to every nested surface.
+- Reintroduce edge attachment, lower-only corners, a white Fluent card, or a visible rectangular host behind the Island.
+- Copy Apple product artwork, use a notch frame, or present Atoll as a macOS feature.
+- Add dashboard rows, timer surfaces, permanent motion, glow effects, or scrolling titles.
+- Change shell geometry in CSS without updating the native `SHELL_GEOMETRY` request and Windows region behavior.

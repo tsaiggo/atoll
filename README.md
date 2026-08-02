@@ -11,41 +11,25 @@
   </p>
 </div>
 
-Atoll 是一款面向 Windows 11 的顶部动态状态中心。它固定在主显示器顶部居中，默认在空闲时收缩为极小的 **Reef**（也可设置为完全隐藏），在需要时以 **Compact** 或 **Expanded** 形态浮现，让媒体控制和系统状态始终触手可及，又不会长期占据桌面空间。
+Atoll 是一款面向 Windows 11 的顶部动态状态中心。它固定在主显示器顶部居中，距离屏幕顶部 **8 DIP**；空闲时收缩为极小的 **Reef**，点击 Reef 即可展开。切歌或音量变化时，它会自动打开相关控制，并在无交互后安静收回，让媒体控制和系统状态始终触手可及，又不会长期占据桌面空间。
 
-Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐像素移植。它使用 Windows 原生窗口能力、Fluent 材质语义与系统媒体接口，目标是成为一个安静、快速、属于 Windows 桌面的环境状态层。
+Atoll 借鉴了 iPhone Dynamic Island 的“状态先出现、内容随后展开”交互语法，但不是逐像素复刻，也不使用 Apple 的品牌资产。它是一个拥有独立 Windows 身份的 **Windows Status Island**：在浅色和深色系统主题中都保持深黑色岛体，用 Segoe UI、Windows 媒体会话和原生窗口能力完成信息层级、动画与系统集成。
 
 > [!IMPORTANT]
 > Atoll `0.1.0` 仍处于早期开发阶段，目前仅面向 Windows 11。仓库暂未发布预编译安装包；你可以按照下文从源码运行或构建 NSIS 安装包。
 
-## 界面预览
+## 视觉与交互
 
-<table>
-  <thead>
-    <tr>
-      <th align="center">Light</th>
-      <th align="center">Dark</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="artifacts/screenshots/expanded-media-light.png" width="384" alt="Atoll Expanded media panel in light theme"></td>
-      <td align="center"><img src="artifacts/screenshots/expanded-media-dark.png" width="384" alt="Atoll Expanded media panel in dark theme"></td>
-    </tr>
-    <tr>
-      <td align="center"><img src="artifacts/screenshots/compact-media-light.png" width="188" alt="Atoll Compact media panel in light theme"></td>
-      <td align="center"><img src="artifacts/screenshots/compact-media-dark.png" width="188" alt="Atoll Compact media panel in dark theme"></td>
-    </tr>
-  </tbody>
-</table>
+Atoll 使用一个连续的纯黑色圆角岛体，而不是 Windows Widgets 的白色卡片。岛体尺寸、圆角和原生点击区域同步变化：先完成轮廓形变，再以短暂的分层入场展示媒体内容。这样在不同 DPI、浅色桌面和深色桌面上，外壳都保持一致的深色轮廓，不依赖卡片描边或阴影。
 
-以上截图来自当前代码中的开发 Demo，使用合成媒体信息，不包含个人播放记录。发布构建不会显示虚构媒体入口。
+当前 UI 不将仓库中的历史设计图或开发截图当作产品真相；请以运行中的 Tauri 窗口和 [`DESIGN.md`](DESIGN.md) 中的设计契约为准。
 
 ## 为什么是 Atoll
 
-- **只在需要时出现**：空闲状态默认收为 Reef，也可完全隐藏；Expanded 自动收起，活跃状态继续以 Compact 保留。
+- **只在需要时出现**：点击 Reef 或发生媒体/音量事件时，Atoll 展开为 Expanded；约 7 秒无交互后收为可唤起的 Reef。
 - **不打断当前工作**：窗口不抢焦点、不进入普通任务栏列表，并在全屏应用中自动隐藏。
-- **遵循 Windows**：跟随系统浅色/深色主题与“减少动画”设置，使用 Windows 媒体会话和 Core Audio 事件。
+- **像一个状态岛，而不是卡片**：深黑色外壳在 Windows 浅色和深色主题中保持稳定；媒体封面、标题、进度和主控按钮从同一个岛体中展开。
+- **遵循 Windows**：使用 Segoe UI、Windows 媒体会话、Core Audio 事件与系统“减少动画”设置。
 - **状态可预测**：窗口尺寸、自动收起和媒体来源选择都有明确规则。
 - **反馈有层次**：媒体会话作为持续状态，音量变化只短暂浮现，不会长期占据桌面。
 - **本地优先**：不需要账号，不上传媒体信息，没有遥测、广告或云端依赖。
@@ -58,7 +42,7 @@ Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐�
 - 固定在主显示器顶部居中，不可拖动或调整尺寸。
 - 支持高 DPI、负坐标和显示器配置变化后的自动重定位。
 - 始终置顶但不抢焦点；透明圆角区域不会截获底层窗口点击。
-- 自动跟随 Windows 应用浅色/深色主题，主题切换无需重建窗口。
+- 纯黑色外壳在 Windows 浅色/深色主题中保持一致，媒体进度与主控使用近白色强调，Reef 与键盘焦点保留少量信号色。
 - 尊重系统“减少动画”设置。
 - 单实例运行，提供托盘菜单、右键菜单与 `Ctrl + Shift + Space` 全局快捷键。
 
@@ -73,7 +57,7 @@ Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐�
 
 ### 系统反馈
 
-- 监听 Windows Core Audio 音量与静音变化，并以 Compact 状态短暂反馈。
+- 监听 Windows Core Audio 音量与静音变化，并自动展开对应的快捷控制。
 - 检测前台全屏应用并自动隐藏；离开全屏后恢复到当时有效的状态。
 - 音量模块目前仅提供反馈，不修改系统音量。
 
@@ -81,20 +65,22 @@ Atoll 不是 Windows 锁屏小组件，也不是对某个移动端交互的逐�
 
 | 状态 | 尺寸（DIP） | 用途 | 默认行为 |
 | --- | ---: | --- | --- |
-| Hidden | — | 原生窗口不可见 | 由空闲设置、全屏策略或界面中的 Hide 触发 |
-| Reef | `80 × 12` | 空闲入口 | 点击后打开 Atoll |
-| Compact | `188 × 44` | 当前媒体或音量反馈 | 媒体会话存在时可保持，否则回到 Reef/Hidden |
-| Expanded | `384 × 148` | 媒体详细控制与设置 | 默认约 7 秒无交互后收起；指针活动会重新开始等待周期 |
+| Hidden | — | 原生窗口不可见 | 由全屏策略或界面中的 Hide 触发 |
+| Reef | `96 × 32` | 空闲入口 | 点击后打开 Atoll |
+| Compact | `256 × 56` | 轻量上下文状态 | 仅在需要简短状态表达时使用，不会因持续播放而常驻 |
+| Expanded | `400 × 176` | 媒体详细控制与设置 | 点击 Reef、切歌或音量变化时打开；默认约 7 秒无交互后收起 |
 
-“自动收起”不等于始终隐藏：仍有媒体会话时，Expanded 通常会回到 Compact；没有活跃媒体时才按设置回到 Reef 或 Hidden。
+所有尺寸均为逻辑像素（DIP），窗口固定在主显示器顶部居中并保留 8 DIP 顶部留白。原生窗口尺寸、可见圆角和命中区域同时过渡，避免圆角透明区拦截底层应用的点击。
+
+“自动收起”会把 Expanded 回落到 Reef。媒体/音量事件会刷新这段等待时间；在 Expanded 中进行鼠标、滚轮或键盘操作也会刷新。需要完全隐藏时，可使用 Expanded 首页的 Hide 或全屏自动隐藏；手动隐藏和前台全屏期间，新的系统事件不会强行将岛体重新弹出。
 
 ## 使用方式
 
-- 点击 Reef 打开 Atoll，点击 Compact 查看详细控制。
+- 点击 Reef 打开 Atoll；仅悬停不会展开，避免指针经过顶部时打断工作。
 - 使用 `Ctrl + Shift + Space` 在 Expanded 与当前有效的收起状态之间切换。若快捷键已被其他应用占用，Atoll 仍会正常启动，并记录冲突。
 - 左键单击托盘图标可执行同样的切换；右键 Atoll 或托盘图标可打开快捷菜单、进入设置或退出。
 - Expanded 首页底部的 Hide 可让 Atoll 完全隐藏；再次使用快捷键或托盘入口即可唤回。
-- 在设置中可切换中英文、全屏自动隐藏，以及空闲时使用 Reef 或 Hidden。
+- 在设置中可切换中英文和全屏自动隐藏。媒体/音量事件触发展开后，默认约 7 秒会回到 Reef。
 
 ## 环境要求
 
@@ -159,6 +145,7 @@ pnpm dev
 | `pnpm dev` | 仅启动 Vite 前端开发服务器 |
 | `pnpm tauri dev` | 启动完整的 Tauri 开发应用 |
 | `pnpm build` | 执行 TypeScript 类型检查并构建前端到 `dist/` |
+| `pnpm test` | 运行 TypeScript/Node 逻辑测试 |
 | `pnpm preview` | 预览已经构建的前端产物 |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | 检查 Rust 格式 |
 | `cargo test --manifest-path src-tauri/Cargo.toml --locked` | 运行 Rust 测试，并禁止隐式修改锁文件 |
@@ -174,6 +161,7 @@ pnpm dev
 ```powershell
 pnpm install --frozen-lockfile
 pnpm build
+pnpm test
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml --locked
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -222,7 +210,7 @@ Atoll 当前也没有应用内自动更新器。重复运行新版本安装器�
 - [ ] 构建 NSIS 安装包，检查文件名、图标、版本信息和安装范围。
 - [ ] 在一台干净的 Windows 11 环境验证首次安装、启动、覆盖升级与卸载。
 - [ ] 验证 100%、125%、150% 和 200% 缩放下的顶部居中与圆角命中区域。
-- [ ] 验证浅色/深色主题、全屏隐藏、媒体控制和音量反馈。
+- [ ] 验证浅色/深色 Windows 环境下的深色岛体、全屏隐藏、媒体控制和音量反馈。
 - [ ] 对安装包进行 Authenticode 签名并再次验证签名状态。
 - [ ] 创建 Git tag，在 [GitHub Releases](https://github.com/tsaiggo/atoll/releases) 发布安装器、校验值与变更说明。
 
@@ -247,7 +235,7 @@ Atoll
 │     ├─ fullscreen.rs         前台全屏检测
 │     └─ app_controls.rs       托盘、菜单与全局快捷键
 ├─ assets/                     品牌资源
-├─ artifacts/screenshots/      产品与验收截图
+├─ artifacts/                  设计研究与验收过程产物（非当前 UI 的权威来源）
 ├─ ARCHITECTURE.md             职责边界、依赖规则与 IPC 契约
 └─ DESIGN.md                   视觉系统与组件规则
 ```
@@ -314,18 +302,19 @@ Document NSIS release workflow
 - 解决的问题，以及为什么选择当前方案。
 - 影响到的 UI、IPC、Windows API 或持久化边界。
 - 实际执行过的测试命令与手工验证场景。
-- UI 变更的 before/after 截图，至少覆盖 Light 与 Dark。
+- UI 变更的 before/after 截图，至少覆盖 Windows 浅色和深色桌面环境。
 - 涉及窗口几何时，注明验证过的 DPI 和多显示器布局。
 
 提交前可以复制下面的清单：
 
 ```markdown
 - [ ] `pnpm build`
+- [ ] `pnpm test`
 - [ ] `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
 - [ ] `cargo test --manifest-path src-tauri/Cargo.toml --locked`
 - [ ] `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
 - [ ] 已在 Windows 11 Tauri 窗口中完成 smoke test
-- [ ] UI 变更已验证 Light / Dark 与常见 DPI
+- [ ] UI 变更已验证 Windows 浅色 / 深色环境与常见 DPI
 - [ ] 没有提交个人媒体信息、日志、密钥或无关生成物
 ```
 

@@ -69,10 +69,6 @@ export interface AppCopy {
     readonly language: string;
     readonly fullscreen: string;
     readonly fullscreenDetail: string;
-    readonly idle: string;
-    readonly idleDetail: string;
-    readonly reef: string;
-    readonly hidden: string;
   };
 }
 
@@ -143,10 +139,6 @@ const EN: AppCopy = {
     language: "Language",
     fullscreen: "In full screen",
     fullscreenDetail: "Hide Atoll automatically",
-    idle: "When idle",
-    idleDetail: "Choose the resting state",
-    reef: "Reef",
-    hidden: "Hidden",
   },
 };
 
@@ -216,10 +208,6 @@ const ZH_CN: AppCopy = {
     language: "语言",
     fullscreen: "全屏时",
     fullscreenDetail: "自动隐藏 Atoll",
-    idle: "空闲时",
-    idleDetail: "选择常驻状态",
-    reef: "礁脊",
-    hidden: "隐藏",
   },
 };
 

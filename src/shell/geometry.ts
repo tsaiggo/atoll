@@ -6,12 +6,16 @@ export interface WindowDimensions {
   cornerRadius: number;
 }
 
+// A visible top inset is part of the Island contract: every state owns four
+// real corners, rather than borrowing the monitor edge as two of them.
+export const ISLAND_TOP_MARGIN = 8;
+
 export const SHELL_GEOMETRY: Record<Exclude<ShellState, "hidden">, WindowDimensions> = {
-  reef: { width: 80, height: 12, cornerRadius: 12 },
-  compact: { width: 188, height: 44, cornerRadius: 22 },
-  expanded: { width: 384, height: 148, cornerRadius: 12 },
+  reef: { width: 96, height: 32, cornerRadius: 16 },
+  compact: { width: 256, height: 56, cornerRadius: 28 },
+  expanded: { width: 400, height: 176, cornerRadius: 28 },
 };
 
 export function shellGeometryStyle(state: Exclude<ShellState, "hidden">): string {
-  return `style="--shell-bottom-radius:${SHELL_GEOMETRY[state].cornerRadius}px"`;
+  return `style="--shell-radius:${SHELL_GEOMETRY[state].cornerRadius}px"`;
 }
