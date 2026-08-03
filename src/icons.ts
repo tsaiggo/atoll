@@ -11,9 +11,15 @@ type IconName =
   | "volume"
   | "volumeMute";
 
+// The Inset Cove is a filled, compound mark rather than a stroked icon. Keep
+// the source geometry in its native 160 × 160 coordinate space so the Reef,
+// brand lockup, and package icon all share the same optical proportions.
+const ATOLL_MARK_PATH =
+  "M80 14C46 14 20 41 20 80C20 119 46 146 80 146C114 146 140 119 140 80C140 68 139 58 135 49C130 49 122 49 116 53C112 55 110 58 108 61C107 46 108 30 112 17C102 15 92 14 80 14Z M70 55C55 55 45 66 45 81C45 96 55 107 70 107C85 107 95 96 95 81C95 66 85 55 70 55Z";
+
 const paths: Record<IconName, string> = {
   atoll:
-    '<ellipse cx="12" cy="12" rx="8.2" ry="5.4"/><path d="M18.8 8.9c1.2.7 1.9 1.8 1.9 3.1 0 3.5-3.9 6.4-8.7 6.4S3.3 15.5 3.3 12 7.2 5.6 12 5.6"/>',
+    `<path fill="currentColor" stroke="none" fill-rule="evenodd" clip-rule="evenodd" d="${ATOLL_MARK_PATH}"/>`,
   back: '<path d="m15 18-6-6 6-6"/>',
   gear:
     '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/>',
@@ -31,7 +37,8 @@ export function icon(name: IconName, label?: string, className = ""): string {
   const accessible = label
     ? `role="img" aria-label="${escapeAttribute(label)}"`
     : 'aria-hidden="true"';
-  return `<svg class="icon ${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ${accessible}>${paths[name]}</svg>`;
+  const viewBox = name === "atoll" ? "0 0 160 160" : "0 0 24 24";
+  return `<svg class="icon ${className}" viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ${accessible}>${paths[name]}</svg>`;
 }
 
 function escapeAttribute(value: string): string {

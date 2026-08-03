@@ -22,6 +22,11 @@ export interface NativeShellRequest {
   animated: boolean;
   topMargin: number;
   theme: "light" | "dark";
+  transitionId: number;
+}
+
+export interface NativeShellSettledPayload {
+  transitionId: number;
 }
 
 export interface NativeEventHandlers {
@@ -29,6 +34,7 @@ export interface NativeEventHandlers {
   onMediaUpdate(payload: NativeMediaUpdatePayload): void;
   onVolume(payload: NativeVolumePayload): void;
   onFullscreenChanged(payload: { fullscreen: boolean }): void;
+  onShellSettled(payload: NativeShellSettledPayload): void;
 }
 
 export const nativeRuntime = Boolean(window.__TAURI_INTERNALS__);
@@ -50,6 +56,7 @@ export function applyNativeShell(request: NativeShellRequest): Promise<void> {
     animated: request.animated,
     topMargin: request.topMargin,
     theme: request.theme,
+    transitionId: request.transitionId,
   });
 }
 
@@ -77,6 +84,9 @@ export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<Un
     listen<NativeVolumePayload>("system-volume", ({ payload }) => handlers.onVolume(payload)),
     listen<{ fullscreen: boolean }>("fullscreen-changed", ({ payload }) =>
       handlers.onFullscreenChanged(payload),
+    ),
+    listen<NativeShellSettledPayload>("atoll-shell-settled", ({ payload }) =>
+      handlers.onShellSettled(payload),
     ),
   ]);
 }

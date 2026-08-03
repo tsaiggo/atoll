@@ -1,16 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <circle cx="512" cy="512" r="448" fill="#0B0D10"/>
-  <ellipse
-    cx="512"
-    cy="512"
-    rx="300"
-    ry="205"
-    fill="none"
-    stroke="#65D6C5"
-    stroke-width="88"
-    stroke-linecap="round"
-    stroke-dasharray="1280 320"
-    transform="rotate(-12 512 512)"
-  />
-  <circle cx="792" cy="378" r="42" fill="#F07B6D"/>
+  <rect width="1024" height="1024" rx="279" fill="#07090D"/>
+  <rect x="6" y="6" width="1012" height="1012" rx="273" fill="none" stroke="#202832" stroke-width="12"/>
+  <g transform="translate(186.1818 186.1818) scale(4.072727)">
+    <path fill="#7AE4D4" fill-rule="evenodd" clip-rule="evenodd" d="M80 14C46 14 20 41 20 80C20 119 46 146 80 146C114 146 140 119 140 80C140 68 139 58 135 49C130 49 122 49 116 53C112 55 110 58 108 61C107 46 108 30 112 17C102 15 92 14 80 14Z M70 55C55 55 45 66 45 81C45 96 55 107 70 107C85 107 95 96 95 81C95 66 85 55 70 55Z"/>
+  </g>
 </svg>

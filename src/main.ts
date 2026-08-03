@@ -30,8 +30,9 @@ import {
   setNativeMenuLanguage,
   showNativeContextMenu,
   subscribeNativeEvents,
+  type NativeShellSettledPayload,
 } from "./platform/native";
-import { IslandMaterialFlow } from "./material/flow";
+import { IslandMaterialFlow, type MaterialPulse } from "./material/flow";
 import { SHELL_GEOMETRY } from "./shell/geometry";
 import { renderApp, updateMediaProgress } from "./ui/render";
 import "./styles.css";
@@ -39,6 +40,14 @@ import "./styles.css";
 interface NativeAcceptedShell {
   shell: ShellState;
   signature: string;
+}
+
+interface PendingShellPresentation {
+  revision: number;
+  previous: ShellState;
+  next: Exclude<ShellState, "hidden">;
+  animated: boolean;
+  pendingPulse: MaterialPulse | null;
 }
 
 const appElement = document.querySelector<HTMLElement>("#app");
@@ -88,6 +97,9 @@ let manuallyHidden = false;
 let shellRevision = 0;
 let nativeAcceptedShell: NativeAcceptedShell | null = null;
 let nativeShellQueue: Promise<void> = Promise.resolve();
+let nativeEventBridgeReady = false;
+let pendingShellPresentation: PendingShellPresentation | null = null;
+let shellPresentationSafetyId: number | null = null;
 
 function isPreviewMode(value: string | null): value is PreviewMode {
   return (
@@ -132,6 +144,21 @@ async function startApplication(): Promise<void> {
     await setNativeMenuLanguage(settings.language).catch((error: unknown) =>
       console.warn("Unable to update the Atoll menu language", error),
     );
+    const subscriptions = await subscribeNativeEvents({
+      onAction: applyExternalAction,
+      onMediaUpdate: updateMediaConnect,
+      onVolume: updateVolume,
+      onFullscreenChanged: (payload) => {
+        fullscreen = payload.fullscreen;
+        if (!fullscreen) fullscreenOverride = false;
+        reconcilePresentation();
+      },
+      onShellSettled: releaseNativeShellPresentation,
+    }).catch((error: unknown) => {
+      console.warn("Atoll event bridge unavailable", error);
+      return null;
+    });
+    nativeEventBridgeReady = subscriptions !== null;
   }
   if (shouldHideForFullscreen()) {
     await setShell("hidden", false);
@@ -143,16 +170,6 @@ async function startApplication(): Promise<void> {
     reconcilePresentation(false);
   }
   if (!nativeRuntime) return;
-  await subscribeNativeEvents({
-    onAction: applyExternalAction,
-    onMediaUpdate: updateMediaConnect,
-    onVolume: updateVolume,
-    onFullscreenChanged: (payload) => {
-      fullscreen = payload.fullscreen;
-      if (!fullscreen) fullscreenOverride = false;
-      reconcilePresentation();
-    },
-  }).catch((error: unknown) => console.warn("Atoll event bridge unavailable", error));
   const initialMedia = await getMediaStatus().catch((error: unknown) => {
     console.warn("Unable to read the initial media state", error);
     return null;
@@ -204,7 +221,7 @@ function onClick(event: MouseEvent): void {
   }
 
   if (shell === "reef") {
-    expandedPanel = "home";
+    expandedPanel = preferredExpandedPanel();
     void setShell("expanded");
   } else if (shell === "compact") {
     expandedPanel = panelForContent(content);
@@ -288,7 +305,7 @@ function applyExternalAction(action: string): void {
       if (fullscreen) fullscreenOverride = true;
       if (shell === "expanded") collapse();
       else {
-        expandedPanel = "home";
+        expandedPanel = preferredExpandedPanel();
         void setShell("expanded");
       }
       break;
@@ -297,7 +314,7 @@ function applyExternalAction(action: string): void {
     case "single-instance":
       manuallyHidden = false;
       if (fullscreen) fullscreenOverride = true;
-      expandedPanel = "home";
+      expandedPanel = preferredExpandedPanel();
       void setShell("expanded");
       break;
     case "hide":
@@ -401,7 +418,11 @@ function surfaceEvent(panel: ExpandedPanel): void {
     return;
   }
   if (shell === "expanded") {
-    materialFlow.pulse(panel === "media" ? "media" : "volume");
+    // Settings is an intentional user task; media or volume updates should not
+    // pull focus away from it. Every other expanded surface follows the event
+    // that woke it, so a new track visibly reaches the Review v2 media card.
+    if (expandedPanel !== "settings") expandedPanel = panel;
+    queueMaterialPulse(panel === "media" ? "media" : "volume");
     resetExpandedExpiry();
     render();
     return;
@@ -486,6 +507,50 @@ function collapse(): void {
   reconcilePresentation(!reducedMotion.matches, false);
 }
 
+function setGeometryPending(pending: boolean): void {
+  if (pending) {
+    app.dataset.geometryPending = "";
+  } else {
+    delete app.dataset.geometryPending;
+  }
+}
+
+function clearPendingShellPresentation(): void {
+  if (shellPresentationSafetyId !== null) {
+    window.clearTimeout(shellPresentationSafetyId);
+    shellPresentationSafetyId = null;
+  }
+  pendingShellPresentation = null;
+  setGeometryPending(false);
+}
+
+function queueMaterialPulse(kind: MaterialPulse): void {
+  const pending = pendingShellPresentation;
+  if (pending && pending.revision === shellRevision && pending.next === "expanded") {
+    pending.pendingPulse = kind;
+    return;
+  }
+  materialFlow.pulse(kind);
+}
+
+function releaseNativeShellPresentation(payload: NativeShellSettledPayload): void {
+  const pending = pendingShellPresentation;
+  if (
+    !pending ||
+    pending.revision !== payload.transitionId ||
+    pending.revision !== shellRevision ||
+    pending.next !== shell
+  ) {
+    return;
+  }
+
+  clearPendingShellPresentation();
+  animateNextShellContent = pending.animated && pending.previous !== pending.next;
+  setShellTransition(pending.previous, pending.next, animateNextShellContent);
+  render();
+  if (pending.pendingPulse) materialFlow.pulse(pending.pendingPulse);
+}
+
 async function setShell(
   next: ShellState,
   animated = !reducedMotion.matches,
@@ -496,9 +561,29 @@ async function setShell(
   if (next !== "expanded") clearExpandedExpiry();
   if (previous !== next || forceNative) shellRevision += 1;
   const revision = shellRevision;
-  animateNextShellContent = animated && previous !== next;
-  if (enteredExpanded && animated) materialFlow.pulse("expand");
-  setShellTransition(previous, next, animateNextShellContent);
+  clearPendingShellPresentation();
+  const shouldGatePresentation =
+    nativeRuntime && nativeEventBridgeReady && next !== "hidden" && previous !== next;
+  animateNextShellContent = animated && previous !== next && !shouldGatePresentation;
+  if (shouldGatePresentation) {
+    pendingShellPresentation = {
+      revision,
+      previous,
+      next,
+      animated,
+      pendingPulse: enteredExpanded && animated ? "expand" : null,
+    };
+    setGeometryPending(true);
+    // This is only a failure guard for an unavailable native event bridge, not
+    // the animation clock. Normal presentation is released by the matching
+    // native transition-id event immediately after its final geometry frame.
+    shellPresentationSafetyId = window.setTimeout(() => {
+      releaseNativeShellPresentation({ transitionId: revision });
+    }, 1200);
+  } else {
+    setShellTransition(previous, next, animateNextShellContent);
+    if (enteredExpanded && animated) materialFlow.pulse("expand");
+  }
   shell = next;
   if (next !== "hidden") lastVisibleShell = next;
   render();
@@ -528,6 +613,7 @@ async function setShell(
           animated: attempt === 0 ? animated : false,
           topMargin: settings.topMargin,
           theme,
+          transitionId: revision,
         });
         nativeAcceptedShell = { shell: next, signature };
         return;
@@ -538,6 +624,7 @@ async function setShell(
     }
 
     console.warn("Unable to update the Atoll shell after retrying", lastError);
+    releaseNativeShellPresentation({ transitionId: revision });
     const fallback = nativeAcceptedShell?.shell ?? "hidden";
     if (fallback !== shell) {
       void setShell(fallback, false);
@@ -652,7 +739,7 @@ function clearExpandedExpiry(): void {
 async function sendMediaCommand(command: MediaCommand): Promise<void> {
   const current = media;
   if (!current || !mediaCommandEnabled(command, current) || pendingMediaCommand !== null) return;
-  materialFlow.pulse("control");
+  queueMaterialPulse("control");
 
   if (!nativeRuntime || demoOverride === "media") {
     if (command === "toggle") media = optimisticPlaybackToggle(current);
@@ -724,6 +811,10 @@ function panelForContent(kind: ContentKind): ExpandedPanel {
   if (kind === "media") return "media";
   if (kind === "settings") return "settings";
   return "home";
+}
+
+function preferredExpandedPanel(): ExpandedPanel {
+  return media ? "media" : "home";
 }
 
 function render(): void {

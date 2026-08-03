@@ -2,12 +2,12 @@
 name: Atoll
 description: A quiet Windows status island for media, volume, and quick controls.
 colors:
-  island-dark-acrylic: "rgba(24, 29, 38, 0.26)"
-  island-light-acrylic: "rgba(239, 244, 251, 0.24)"
-  island-dark-edge: "rgba(255, 255, 255, 0.18)"
-  island-light-edge: "rgba(255, 255, 255, 0.70)"
-  island-dark-opaque: "#1f232c"
-  island-light-opaque: "#edf2f8"
+  island-dark-acrylic: "rgba(84, 84, 84, 0.80)"
+  island-light-acrylic: "rgba(211, 211, 211, 0.76)"
+  island-dark-card: "rgba(44, 44, 44, 0.80)"
+  island-light-card: "rgba(242, 242, 242, 0.78)"
+  island-dark-opaque: "#545454"
+  island-light-opaque: "#d3d3d3"
   island-text-dark: "#f5f7fb"
   island-text-light: "#1c222d"
   island-secondary-dark: "#c4c8d1"
@@ -20,10 +20,10 @@ typography:
   media-title: "14px / 16px"
   metadata: "10–10.5px"
 geometry:
-  top-inset: "8 DIP fixed"
-  reef: "96 × 32 DIP; 16 DIP radius"
-  compact: "256 × 56 DIP; 20 DIP radius"
-  expanded: "400 × 176 DIP; 16 DIP radius"
+  top-anchor: "host starts 12 DIP above the display edge"
+  reef: "visible 96 × 32 DIP; host 96 × 44 DIP; 12 DIP radius"
+  compact: "visible 256 × 56 DIP; host 256 × 68 DIP; 12 DIP radius"
+  expanded: "visible 400 × 176 DIP; host 400 × 188 DIP; 12 DIP radius"
 ---
 
 # Atoll Design System
@@ -32,35 +32,35 @@ geometry:
 
 Atoll is a Windows status island: a small, centered, always-on-top surface that expands only when status needs attention. It borrows the interaction grammar of a compact media island—one shared shape that changes size and releases content in stages—without copying Apple artwork, icons, or hardware framing.
 
-The visual identity is deliberately spare. The Windows Widgets-inspired Acrylic shell, Segoe typography, one mint live signal, and exact centered placement are more important than decorative material or a dense widget layout. It is not an edge-attached card or a miniature dashboard; it is one compact status surface.
+The visual identity is deliberately spare. The Windows Widgets-inspired Acrylic shell, Segoe typography, one mint live signal, and exact centered placement are more important than decorative material or a dense widget layout. It is a compact status surface attached to the display edge—not a miniature dashboard.
 
 ## Shell contract
 
 | State | Geometry | Purpose |
 | --- | --- | --- |
-| Reef | 96 × 32 DIP, radius 16 | Persistent entry point: Atoll mark plus a small activity dot. |
-| Compact | 256 × 56 DIP, radius 20 | A short status or now-playing summary. It can hold a 40 DIP cover, two ellipsized text lines, and a 34 DIP primary action. |
-| Expanded | 400 × 176 DIP, radius 16 | Home, media, or settings panel. |
+| Reef | Visible 96 × 32 DIP; native host 96 × 44 DIP, radius 12 | Persistent entry point: Atoll mark plus a small activity dot. |
+| Compact | Visible 256 × 56 DIP; native host 256 × 68 DIP, radius 12 | A short status or now-playing summary. It can hold a 40 DIP cover, two ellipsized text lines, and a 34 DIP primary action. |
+| Expanded | Visible 400 × 176 DIP; native host 400 × 188 DIP, radius 12 | Home, media, or settings panel. |
 
-- Every state is top-centered on the primary display with a visible, fixed 8 DIP inset. The window is not attached to the monitor edge.
-- Every state owns four rounded corners. CSS clips the content to the full rounded rectangle, and the Windows native region follows the same all-corner geometry at the current DPI so no rectangular hit area or compositor spill is exposed.
+- Every state is top-centered on the primary display. Its full native host starts 12 DIP above the monitor, so the display edge crops the upper corners and the visible object is genuinely edge-attached rather than floated with a gap.
+- Every host still owns four rounded corners. CSS clips the full rounded rectangle, and the Windows native region follows that geometry at the current DPI; only the monitor crops the upper pair, so no rectangular hit area or compositor spill is exposed.
 - The host window is transparent, decorationless, non-focusable, always on top, absent from the taskbar, and has no platform shadow. The visible Island itself supplies the silhouette.
-- Native sizing and centering are updated together on the same 16ms transition frame through one native Windows window transaction. Keep both values in the same native transition; do not let CSS independently reposition the Island.
+- Native sizing and centering are updated together on the same 16ms transition frame through one native Windows window transaction. The frontend releases text and controls only after the native geometry settles; do not let CSS independently reposition the Island.
 
 ## Color and material
 
-The Island takes its material and geometry cues from the Windows Widgets Board: a rounded Acrylic shell with quiet internal backplates. The WebView paints the material itself — the theme Acrylic base color, a subtle top reflection, and a one-pixel lower contour — clipped by the CSS radius and the matching native window region, so no rectangular backing can appear outside the silhouette. Native Windows Acrylic is not used for the backdrop: its compositor paints a rectangle even into region-excluded pixels, which leaves visible corners. A transparent WebGL material layer may add one brief, neutral light sweep for expansion or a meaningful media action, then stops. Reduced-transparency mode uses the theme-appropriate opaque fallback directly.
+The Island takes its material and geometry cues from the Windows Widgets Pane: one neutral Acrylic shell with quiet internal backplates. The WebView paints the material itself — a neutral translucent base with one extremely soft top reflection — clipped by the CSS radius and matching native window region, so no rectangular backing can appear outside the silhouette. Native Windows Acrylic is not used for the backdrop: its compositor paints a rectangle even into region-excluded pixels, which leaves visible corners. A transparent WebGL material layer may add one brief, neutral light sweep for expansion or a meaningful media action, then stops. Reduced-transparency mode uses the theme-appropriate opaque fallback directly.
 
 - `#f5f7fb` / `#1c222d`: primary text in dark / light themes.
 - `#c4c8d1` / `#556072`: secondary metadata and secondary transport controls.
 - `#9299a7` / `#727d8f`: low-priority information and disabled states.
 - Near-white in dark mode and charcoal in light mode: media progress and primary transport control.
 - `#78e2d1`: the one Atoll live signal—for the Reef activity dot and keyboard focus only.
-- `#1f232c` / `#edf2f8`: opaque accessibility fallback in dark / light themes.
-- `rgba(24, 29, 38, 0.26)` / `rgba(239, 244, 251, 0.24)`: dark / light Acrylic base of the shell material.
-- Translucent white or neutral overlays: internal raised and hover surfaces only.
+- `#545454` / `#d3d3d3`: opaque accessibility fallback in dark / light themes.
+- `rgba(84, 84, 84, 0.80)` / `rgba(211, 211, 211, 0.76)`: dark / light neutral Acrylic base of the shell material. These are the visual equivalents of the Widgets Pane's `#545454 / 64%` and `#d3d3d3 / 44%` luminosity layers: the WebView cannot blur native desktop pixels behind its transparent host, so the fallback is intentionally denser to prevent desktop text from leaking through.
+- `rgba(44, 44, 44, 0.80)` / `rgba(242, 242, 242, 0.78)`: quiet content backplates, with a low-contrast one-pixel border and a `0 2px 4px rgba(0,0,0,.04)` card shadow.
 
-Do not introduce dashboard grids, broad tinted module backgrounds, ornamental glows, a separate shadow gutter, or multiple accent colors. Acrylic belongs to the one shared shell only; depth comes from its translucent tone, controlled inner reflection, and a small number of neutral tonal steps.
+Do not introduce dashboard grids, broad tinted module backgrounds, ornamental glows, a separate shadow gutter, or multiple accent colors. Acrylic belongs to the one shared shell only; depth comes from its neutral tone, controlled inner reflection, and a small number of quiet card layers.
 
 ## Typography and content density
 

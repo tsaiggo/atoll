@@ -20,8 +20,10 @@ interface FlowUniforms {
 const PULSE_DURATION_MS = 760;
 const FRAME_INTERVAL_MS = 1000 / 30;
 const MAX_DEVICE_PIXEL_RATIO = 1.5;
-const LIGHT_FLOW_COLOR: readonly [number, number, number] = [0.75, 0.86, 1];
-const DARK_FLOW_COLOR: readonly [number, number, number] = [0.78, 0.89, 1];
+// Keep the optional motion neutral. The Widgets Pane material is grey rather
+// than blue; this is a short optical response, not a second accent color.
+const LIGHT_FLOW_COLOR: readonly [number, number, number] = [0.9, 0.9, 0.9];
+const DARK_FLOW_COLOR: readonly [number, number, number] = [0.94, 0.94, 0.94];
 const PULSE_STRENGTH: Record<MaterialPulse, number> = {
   expand: 1,
   media: 0.86,
@@ -62,7 +64,7 @@ void main() {
   float fold = 0.72 + 0.28 * sin(v_uv.y * 8.0 + v_uv.x * 3.2 - u_time * 4.0);
   float echo = soft_band(diagonal, sweep_center - 0.34, 0.32) * 0.24;
   float envelope = pow(sin(clamp(u_progress, 0.0, 1.0) * 3.14159265), 0.82);
-  float alpha = (sweep * fold * 0.14 + echo * 0.05) * envelope * u_strength;
+  float alpha = (sweep * fold * 0.08 + echo * 0.028) * envelope * u_strength;
 
   out_color = vec4(u_color * alpha, alpha);
 }`;

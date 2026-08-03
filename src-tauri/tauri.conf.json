@@ -16,7 +16,7 @@
         "title": "Atoll",
         "additionalBrowserArgs": "--enable-gpu --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
         "width": 96,
-        "height": 32,
+        "height": 44,
         "minWidth": 1,
         "minHeight": 1,
         "center": false,

@@ -30,7 +30,6 @@ export function renderApp(root: HTMLElement, vm: AppViewModel): void {
     root.innerHTML = `
       <button class="atoll-shell reef${motionClass}" ${shellGeometryStyle("reef")} type="button" aria-label="${copy.shell.openAtoll}">
         <span class="reef__mark" aria-hidden="true">${icon("atoll")}</span>
-        <span class="reef__activity" aria-hidden="true"></span>
       </button>`;
     if (focusedInsideShell) root.querySelector<HTMLElement>("button.reef")?.focus();
     return;

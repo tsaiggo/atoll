@@ -3,7 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::{AppHandle, Manager, WebviewWindow};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 #[cfg(not(target_os = "windows"))]
 use tauri::{LogicalPosition, LogicalSize};
@@ -126,6 +127,18 @@ fn show_without_focus(window: &WebviewWindow) -> Result<(), String> {
     window.show().map_err(|error| error.to_string())
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShellSettledPayload {
+    transition_id: u64,
+}
+
+fn emit_shell_settled(window: &WebviewWindow, transition_id: u64) {
+    if let Err(error) = window.emit("atoll-shell-settled", ShellSettledPayload { transition_id }) {
+        log::debug!("Unable to report a settled Atoll shell: {error}");
+    }
+}
+
 pub fn start_display_watcher(app: AppHandle) {
     thread::spawn(move || {
         let mut previous: Option<MonitorSignature> = None;
@@ -179,10 +192,11 @@ struct ShellRequest {
     animated: bool,
     top_margin: f64,
     theme: String,
+    transition_id: u64,
 }
 
 // Tauri exposes command arguments as a flat IPC contract, so this boundary intentionally
-// mirrors the seven values sent by src/platform/native.ts.
+// mirrors the eight values sent by src/platform/native.ts.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn set_window_shell(
@@ -194,6 +208,7 @@ pub async fn set_window_shell(
     animated: bool,
     top_margin: f64,
     theme: String,
+    transition_id: u64,
 ) -> Result<(), String> {
     let request = ShellRequest {
         shell,
@@ -203,6 +218,7 @@ pub async fn set_window_shell(
         animated,
         top_margin,
         theme,
+        transition_id,
     };
     tauri::async_runtime::spawn_blocking(move || accept_window_shell(window, request))
         .await
@@ -218,6 +234,7 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         animated,
         top_margin,
         theme,
+        transition_id,
     } = request;
     let target_corner_radius = requested_corner_radius.max(0.0);
 
@@ -329,7 +346,15 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
                     return;
                 }
             }
+            let runtime = cloned_window.state::<RuntimeState>();
+            let _mutation = lock_window_mutation(&runtime);
+            if !is_current_transition(&runtime, epoch) {
+                return;
+            }
+            emit_shell_settled(&cloned_window, transition_id);
         });
+    } else {
+        emit_shell_settled(&window, transition_id);
     }
     Ok(())
 }
@@ -393,6 +418,10 @@ fn physical_window_frame(
     let physical_width = (width * scale).round().max(1.0) as i32;
     let physical_height = (height * scale).round().max(1.0) as i32;
     let x = monitor_x + ((monitor_width as f64 - physical_width as f64) / 2.0).round() as i32;
+    // `height` is the full host height (44/68/188 DIP). The frontend provides
+    // `top_margin = -12` for its edge-attached shells, so Windows crops the
+    // host's top corners at the monitor boundary. Do not add a native offset:
+    // display recovery must use the same frontend-owned anchor.
     let y = monitor_y + (top_margin * scale).round() as i32;
     (x, y, physical_width, physical_height)
 }
@@ -660,6 +689,8 @@ mod tests {
         shell_frame_geometry, window_region_bands, WindowRegionBands,
     };
 
+    const EDGE_ATTACHED_TOP_MARGIN: f64 = -12.0;
+
     fn contains(region: &WindowRegionBands, x: i32, y: i32) -> bool {
         region
             .bands
@@ -678,17 +709,17 @@ mod tests {
 
     #[test]
     fn effective_corner_radius_matches_css_constraints() {
-        assert_eq!(effective_corner_radius(16.0, 96.0, 32.0), 16.0);
-        assert_eq!(effective_corner_radius(20.0, 256.0, 56.0), 20.0);
-        assert_eq!(effective_corner_radius(16.0, 400.0, 176.0), 16.0);
+        assert_eq!(effective_corner_radius(12.0, 96.0, 44.0), 12.0);
+        assert_eq!(effective_corner_radius(12.0, 256.0, 68.0), 12.0);
+        assert_eq!(effective_corner_radius(12.0, 400.0, 188.0), 12.0);
         assert_eq!(effective_corner_radius(16.0, 256.0, 12.0), 6.0);
         assert_eq!(effective_corner_radius(30.0, 40.0, 80.0), 20.0);
     }
 
     #[test]
     fn shell_animation_morphs_geometry_and_radius_on_the_same_curve() {
-        let start = (96.0, 32.0, 16.0);
-        let target = (400.0, 176.0, 16.0);
+        let start = (96.0, 44.0, 12.0);
+        let target = (400.0, 188.0, 12.0);
         let steps = 12;
         let mut previous = start;
         for step in 0..=steps {
@@ -706,31 +737,52 @@ mod tests {
 
     #[test]
     fn shell_frames_stay_centered_in_physical_pixels() {
-        for (width, height) in [(96.0, 32.0), (256.0, 56.0), (400.0, 176.0)] {
+        for (width, height) in [(96.0, 44.0), (256.0, 68.0), (400.0, 188.0)] {
             let (x, y, physical_width, physical_height) =
-                physical_window_frame(-1920, 0, 2880, 1.5, width, height, 8.0);
+                physical_window_frame(-1920, 0, 2880, 1.5, width, height, EDGE_ATTACHED_TOP_MARGIN);
             assert_eq!(x * 2 + physical_width, -1920 * 2 + 2880);
-            assert_eq!(y, 12);
+            assert_eq!(y, -18);
             assert_eq!(physical_width, (width * 1.5) as i32);
             assert_eq!(physical_height, (height * 1.5) as i32);
         }
     }
 
     #[test]
+    fn edge_attached_host_uses_frontend_top_margin_at_supported_scales() {
+        let monitor_y = 360;
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let (_, y, _, physical_height) = physical_window_frame(
+                -1920,
+                monitor_y,
+                2880,
+                scale,
+                400.0,
+                188.0,
+                EDGE_ATTACHED_TOP_MARGIN,
+            );
+            assert_eq!(
+                y,
+                monitor_y + (EDGE_ATTACHED_TOP_MARGIN * scale).round() as i32
+            );
+            assert_eq!(physical_height, (188.0 * scale).round() as i32);
+        }
+    }
+
+    #[test]
     fn island_region_bands_are_symmetric_at_supported_scales() {
         let cases = [
-            (96.0, 32.0, 16.0, 1.0),
-            (96.0, 32.0, 16.0, 1.25),
-            (96.0, 32.0, 16.0, 1.5),
-            (96.0, 32.0, 16.0, 2.0),
-            (256.0, 56.0, 20.0, 1.0),
-            (256.0, 56.0, 20.0, 1.25),
-            (256.0, 56.0, 20.0, 1.5),
-            (256.0, 56.0, 20.0, 2.0),
-            (400.0, 176.0, 16.0, 1.0),
-            (400.0, 176.0, 16.0, 1.25),
-            (400.0, 176.0, 16.0, 1.5),
-            (400.0, 176.0, 16.0, 2.0),
+            (96.0, 44.0, 12.0, 1.0),
+            (96.0, 44.0, 12.0, 1.25),
+            (96.0, 44.0, 12.0, 1.5),
+            (96.0, 44.0, 12.0, 2.0),
+            (256.0, 68.0, 12.0, 1.0),
+            (256.0, 68.0, 12.0, 1.25),
+            (256.0, 68.0, 12.0, 1.5),
+            (256.0, 68.0, 12.0, 2.0),
+            (400.0, 188.0, 12.0, 1.0),
+            (400.0, 188.0, 12.0, 1.25),
+            (400.0, 188.0, 12.0, 1.5),
+            (400.0, 188.0, 12.0, 2.0),
         ];
 
         for (width, height, radius, scale) in cases {
@@ -754,11 +806,35 @@ mod tests {
     }
 
     #[test]
+    fn monitor_crop_starts_on_a_full_width_host_row_at_supported_scales() {
+        for (width, host_height) in [(96.0, 44.0), (256.0, 68.0), (400.0, 188.0)] {
+            for scale in [1.0, 1.25, 1.5, 2.0] {
+                let region = window_region_bands(width, host_height, 12.0, scale);
+                let first_visible_row = (-EDGE_ATTACHED_TOP_MARGIN * scale).round() as i32;
+                let last_x = region.physical_width - 1;
+
+                // The host still owns its four rounded corners. Rows hidden
+                // above the monitor retain the normal top-corner clip.
+                assert!(!contains(&region, 0, 0));
+                assert!(!contains(&region, last_x, 0));
+
+                // The first row Windows can show is below the 12 DIP top
+                // radius, so it is a full-width material edge rather than a
+                // visibly clipped pair of corners.
+                assert!(first_visible_row < region.physical_height);
+                assert_eq!(row_inset(&region, first_visible_row), 0);
+                assert!(contains(&region, 0, first_visible_row));
+                assert!(contains(&region, last_x, first_visible_row));
+            }
+        }
+    }
+
+    #[test]
     fn island_regions_exclude_all_transparent_corners_at_150_percent() {
         for (width, height, radius) in [
-            (96.0, 32.0, 16.0),
-            (256.0, 56.0, 20.0),
-            (400.0, 176.0, 16.0),
+            (96.0, 44.0, 12.0),
+            (256.0, 68.0, 12.0),
+            (400.0, 188.0, 12.0),
         ] {
             let region = window_region_bands(width, height, radius, 1.5);
             let middle_x = region.physical_width / 2;
