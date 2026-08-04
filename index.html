@@ -3,10 +3,10 @@
   <head>
     <!--
       THESIS: Atoll is one quiet Windows status island that expands from a small Reef into useful media control; it refuses both widget-card clutter and literal Apple replication.
-      OWN-WORLD: A dense near-black four-corner Island, off-white media hierarchy, sea-glass cyan signal, compact Segoe typography, and a single incomplete lagoon ring.
+      OWN-WORLD: A restrained Windows Acrylic four-corner Island, high-contrast media hierarchy, sea-glass cyan signal, compact Segoe typography, and a single incomplete lagoon ring.
       STORY: The user notices one current status, acts in one step, and lets the surface recede without leaving the task.
-      FIRST VIEWPORT: An 8-DIP-inset Reef occupies 96×32 DIP; meaningful state expands the same shell into a 256×56 capsule or a 400×176 media stage.
-      FORM: Operate mode, Windows Dark Island direction; user-pinned iPhone-inspired interaction grammar, with Apple assets, white widget material, and decorative dashboard elements explicitly excluded.
+      FIRST VIEWPORT: A top-edge-attached Reef is visibly 96×32 DIP; its host bleeds 12 DIP above the display edge. Meaningful state expands the same host into visible 256×56 compact and 400×176 media stages.
+      FORM: Operate mode, Windows Acrylic Island direction; user-pinned iPhone-inspired interaction grammar, with Apple assets, a copied Widgets Board grid, and decorative dashboard elements explicitly excluded.
     -->
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,6 +15,9 @@
     <title>Atoll</title>
   </head>
   <body>
+    <div id="material-layer" aria-hidden="true" hidden>
+      <canvas id="material-flow"></canvas>
+    </div>
     <main id="app" aria-live="polite"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -3,42 +3,64 @@
   font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
-  --surface: #151518;
-  --surface-raised: #1d1d20;
-  --surface-soft: rgba(235, 235, 245, 0.08);
-  --surface-hover: rgba(235, 235, 245, 0.14);
-  --surface-quiet: rgba(235, 235, 245, 0.045);
-  --shell-acrylic-fallback: #000000;
-  --shell-card-fill: #000000;
-  --shell-card-stroke: transparent;
-  --shell-material-highlight: transparent;
-  --shell-material-depth: transparent;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-raised: rgba(255, 255, 255, 0.075);
+  --surface-soft: rgba(255, 255, 255, 0.06);
+  --surface-hover: rgba(255, 255, 255, 0.12);
+  --surface-quiet: rgba(255, 255, 255, 0.045);
+  /* Review v2 specifies #484848 at 72% luminosity over a blurred desktop.
+     WebView2 cannot sample pixels outside its transparent native host, so the
+     alpha is deliberately a little denser to prevent live desktop text from
+     bleeding through while retaining the same neutral Acrylic character. */
+  --shell-opaque-fallback: #484848;
+  --shell-acrylic-fallback: rgba(72, 72, 72, 0.8);
+  --shell-material-highlight: rgba(255, 255, 255, 0.035);
+  --shell-backdrop-blur: 30px;
+  --shell-backdrop-saturation: 100%;
+  --widget-backplate: rgba(44, 44, 44, 0.96);
+  --widget-backplate-hover: rgba(54, 54, 54, 0.98);
+  --widget-backplate-stroke: rgba(0, 0, 0, 0.1);
+  --widget-backplate-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  --widget-control-surface: rgba(255, 255, 255, 0.06);
+  --widget-control-hover: rgba(255, 255, 255, 0.1);
+  --widget-control-stroke: rgba(255, 255, 255, 0.08);
+  --widget-control-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --media-card-title: #f5f7f7;
+  --media-card-muted: #aab5b2;
+  --media-card-quiet: #7f8c88;
+  --media-card-track: #35413e;
+  --media-control-ink: #dbe5e2;
+  --media-primary-surface: rgba(30, 30, 30, 0.98);
+  --media-primary-hover: #363636;
+  --media-primary-edge: rgba(255, 255, 255, 0.1);
+  --media-primary-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
   --shell-tint-neutral: transparent;
   --shell-tint-media: transparent;
   --shell-tint-volume: transparent;
-  --text: #f5f5f7;
-  --muted: #aeaeb2;
-  --quiet: #6e6e73;
+  --text: #f5f7fb;
+  --muted: #c4c8d1;
+  --quiet: #9299a7;
   --accent: #78e2d1;
   --accent-strong: #a4f0e2;
   --accent-ink: #000000;
-  --meter-track: rgba(235, 235, 245, 0.18);
-  --media-progress-fill: #f5f5f7;
-  --media-source-signal: rgba(245, 245, 247, 0.72);
-  --cover-brand: #151518;
-  --cover-edge: rgba(255, 255, 255, 0.1);
+  --meter-track: rgba(255, 255, 255, 0.23);
+  --media-progress-fill: #65d6c5;
+  --media-source-signal: #65d6c5;
+  --cover-brand: rgba(255, 255, 255, 0.1);
+  --cover-edge: rgba(255, 255, 255, 0.14);
   --accent-soft: rgba(120, 226, 209, 0.18);
   --accent-medium: rgba(120, 226, 209, 0.42);
   --accent-edge: rgba(120, 226, 209, 0.94);
   --transport-glint: transparent;
-  --transport-surface: rgba(235, 235, 245, 0.09);
-  --transport-hover: rgba(235, 235, 245, 0.16);
+  --transport-surface: rgba(255, 255, 255, 0.1);
+  --transport-hover: rgba(255, 255, 255, 0.18);
   --transport-edge: transparent;
   --transport-primary-edge: transparent;
   --transport-shadow: transparent;
-  --switch-track: #3a3a3c;
-  --switch-thumb: #f5f5f7;
-  --island-primary-fill: #f5f5f7;
+  --switch-track: rgba(255, 255, 255, 0.24);
+  --switch-thumb: #f5f7fb;
+  --island-primary-fill: #f5f7fb;
+  --island-primary-hover: #ffffff;
   --island-primary-ink: #000000;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-island: cubic-bezier(0.32, 0.72, 0, 1);
@@ -47,16 +69,21 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    /* The Island remains recognizably dark in light mode; only the signal
-       and neutral ramps adapt to the surrounding Windows theme. */
+    /* Atoll is a dense dark status object in both Windows themes. On a light
+       desktop it becomes slightly denser, rather than turning into a second
+       white card that erases the Acrylic/backplate hierarchy. */
     color-scheme: dark;
-    --surface-raised: #202024;
-    --surface-soft: rgba(255, 255, 255, 0.1);
-    --surface-hover: rgba(255, 255, 255, 0.17);
-    --accent: #79dfcf;
-    --accent-strong: #b3f7ea;
-    --accent-soft: rgba(121, 223, 207, 0.2);
-    --accent-edge: rgba(121, 223, 207, 0.96);
+    --shell-opaque-fallback: #424242;
+    --shell-acrylic-fallback: rgba(66, 66, 66, 0.86);
+    --shell-material-highlight: rgba(255, 255, 255, 0.05);
+    --widget-backplate: rgba(36, 36, 36, 0.98);
+    --widget-backplate-hover: rgba(47, 47, 47, 0.98);
+    --widget-backplate-stroke: rgba(255, 255, 255, 0.08);
+    --widget-backplate-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+    --widget-control-surface: rgba(255, 255, 255, 0.075);
+    --widget-control-hover: rgba(255, 255, 255, 0.12);
+    --widget-control-stroke: rgba(255, 255, 255, 0.1);
+    --widget-control-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 }
 
@@ -77,6 +104,21 @@ body,
 body {
   user-select: none;
   -webkit-font-smoothing: antialiased;
+}
+
+#material-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: var(--material-radius, 0px);
+}
+
+#material-flow {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 button {
@@ -114,6 +156,8 @@ button:focus-visible {
 }
 
 #app {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: stretch;
   opacity: 1;
@@ -130,22 +174,37 @@ button:focus-visible {
   height: 100%;
   color: var(--text);
   border-radius: var(--shell-radius);
-  background: var(--shell-card-fill);
-  box-shadow: none;
+  background-color: var(--shell-acrylic-fallback);
+  -webkit-backdrop-filter: blur(var(--shell-backdrop-blur)) saturate(var(--shell-backdrop-saturation));
+  backdrop-filter: blur(var(--shell-backdrop-blur)) saturate(var(--shell-backdrop-saturation));
+  /* Widgets Pane does not use a bright bevel or a bottom rim. One nearly
+     invisible reflection gives the Acrylic edge definition without drawing a
+     separate card border around the native window. */
+  box-shadow: inset 0 1px 0 var(--shell-material-highlight);
+  background-clip: padding-box;
+  isolation: isolate;
   overflow: hidden;
 }
 
-.compact--media,
-.expanded--media {
-  background-color: var(--shell-acrylic-fallback);
+/* Native Windows owns the exact shell geometry. During a state change the
+   host first grows or contracts to its final clipped footprint; only then do
+   the controls enter. Keeping the Acrylic and the inner backplate visible
+   prevents the transition from reading as a disappearing window, while
+   avoiding content being reflowed through an in-between native viewport. */
+#app[data-geometry-pending] .reef > *,
+#app[data-geometry-pending] .compact > * {
+  visibility: hidden;
+  pointer-events: none;
 }
 
-.compact--volume {
-  background-color: var(--shell-acrylic-fallback);
-}
-
-.expanded--settings {
-  background-color: var(--shell-acrylic-fallback);
+#app[data-geometry-pending] .expanded .expanded__header,
+#app[data-geometry-pending] .expanded .home__media,
+#app[data-geometry-pending] .expanded .media-playback,
+#app[data-geometry-pending] .expanded .connect-empty,
+#app[data-geometry-pending] .expanded .settings__rows,
+#app[data-geometry-pending] .expanded .expanded__footer {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .reef {
@@ -153,15 +212,16 @@ button:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  padding: 0;
+  /* The native host bleeds 12 DIP above the monitor. Keep the Reef mark
+     centered in the visible 32 DIP portion rather than in the full host. */
+  padding: 12px 0 0;
   cursor: pointer;
   transform-origin: top center;
 }
 
 .reef__mark {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
   color: var(--text);
@@ -169,25 +229,12 @@ button:focus-visible {
 }
 
 .reef__mark .icon {
-  width: 17px;
-  height: 17px;
-}
-
-.reef__activity {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  transition: transform 140ms var(--ease-out);
+  width: 16px;
+  height: 16px;
 }
 
 .reef:hover .reef__mark {
   color: var(--accent);
-}
-
-.reef:hover .reef__activity {
-  transform: scale(1.16);
 }
 
 .compact {
@@ -196,7 +243,8 @@ button:focus-visible {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  /* Preserve the 8 DIP visual top inset after the 12 DIP host bleed. */
+  padding: 20px 12px 8px;
   cursor: pointer;
   text-align: left;
   transform-origin: top center;
@@ -284,7 +332,7 @@ button:focus-visible {
 .compact--media {
   grid-template-columns: minmax(0, 1fr) 34px;
   gap: 10px;
-  padding: 8px 10px 8px 8px;
+  padding: 20px 10px 8px 8px;
   cursor: default;
 }
 
@@ -298,7 +346,7 @@ button:focus-visible {
   padding: 0;
   color: var(--text);
   text-align: left;
-  border-radius: 12px;
+  border-radius: 7px;
   background: transparent;
   cursor: pointer;
 }
@@ -322,7 +370,7 @@ button:focus-visible {
 
 .compact-media__toggle:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--island-primary-ink);
-  background: #ffffff;
+  background: var(--island-primary-hover);
 }
 
 .compact-media__toggle:disabled {
@@ -362,19 +410,19 @@ button:focus-visible {
 .cover--compact {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .cover--home {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .cover--expanded {
   width: 52px;
   height: 52px;
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .cover--brand {
@@ -426,22 +474,41 @@ button:focus-visible {
 
 .expanded {
   position: relative;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  padding: 14px 18px 12px;
+  display: block;
+  /* The inner content card begins at host y=0, so its upper corners disappear
+     into the screen edge. Acrylic is deliberately visible only at the sides
+     and on the 8 DIP lower reveal. */
+  padding: 0 8px 8px;
   transform-origin: top center;
 }
 
-.expanded--home {
-  grid-template-rows: 40px minmax(0, 1fr) 24px;
-}
-
+.expanded--home,
+.expanded--media,
 .expanded--settings {
-  grid-template-rows: 40px minmax(0, 1fr);
+  display: block;
 }
 
-.expanded--media {
-  grid-template-rows: 52px 78px 20px;
+/* Figma Review v3: the 400 × 188 DIP host bleeds 12 DIP above the monitor.
+   The 384 × 180 DIP backplate begins at host y=0, leaving only 8 DIP of
+   Acrylic at its sides and below its visible edge. Its 31 DIP top padding
+   places the first content row at screen y≈20 after the host bleed. */
+.media-card,
+.home-card,
+.settings-card {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 50px 70px 22px;
+  padding: 31px 15px 5px;
+  border: 1px solid var(--widget-backplate-stroke);
+  border-radius: 8px;
+  background: var(--widget-backplate);
+  box-shadow: var(--widget-backplate-shadow);
+}
+
+.settings-card {
+  grid-template-rows: 50px minmax(0, 1fr);
 }
 
 .expanded::before {
@@ -503,7 +570,9 @@ button:focus-visible {
   padding: 0;
   color: var(--muted);
   border-radius: 50%;
-  background: transparent;
+  border: 1px solid var(--widget-control-stroke);
+  background: var(--widget-control-surface);
+  box-shadow: var(--widget-control-shadow);
   cursor: pointer;
   transition:
     color 120ms ease-out,
@@ -513,7 +582,7 @@ button:focus-visible {
 
 .icon-button:hover {
   color: var(--text);
-  background: var(--surface-raised);
+  background: var(--widget-control-hover);
 }
 
 .icon-button--transport {
@@ -521,13 +590,14 @@ button:focus-visible {
   height: 36px;
   color: var(--island-primary-ink);
   border-radius: 50%;
+  border-color: transparent;
   background: var(--island-primary-fill);
   box-shadow: none;
 }
 
 .icon-button--transport:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--island-primary-ink);
-  background: #ffffff;
+  background: var(--island-primary-hover);
 }
 
 .icon-button--transport:disabled {
@@ -551,26 +621,89 @@ button:focus-visible {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
+  align-self: center;
   gap: 10px;
   margin-top: 4px;
-  padding: 8px 4px;
-  border-radius: 12px;
-  background: transparent;
-  transition: background-color 120ms ease-out;
+  padding: 8px;
+  border: 1px solid var(--widget-backplate-stroke);
+  border-radius: 8px;
+  background: var(--widget-backplate);
+  box-shadow: var(--widget-backplate-shadow);
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
 }
 
 .expanded--home .home__media {
   margin-top: 0;
-  padding: 8px 4px;
+  padding: 8px;
+}
+
+/* Home uses the same single Review v2 backplate as Media. The media summary
+   becomes content within that card, not a second permanent card layered on
+   top of it. This is the default Reef → Expanded path. */
+.home-card .expanded__header {
+  min-height: 50px;
+}
+
+.home-card .icon-button:not(.icon-button--transport) {
+  width: 28px;
+  height: 28px;
+}
+
+.home-card .home__media {
+  height: 70px;
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.home-card .home__media.is-empty {
+  background: transparent;
+}
+
+.home-card .home__media:has(.media-summary:hover),
+.home-card .home__media:has(.icon-button:hover) {
+  background: var(--widget-control-surface);
+}
+
+.home-card .icon-button--transport {
+  width: 42px;
+  height: 42px;
+  color: var(--media-progress-fill);
+  border-color: var(--media-primary-edge);
+  background: var(--media-primary-surface);
+  box-shadow: var(--media-primary-shadow);
+}
+
+.home-card .icon-button--transport:hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--media-progress-fill);
+  background: var(--media-primary-hover);
+}
+
+.home-card .expanded__footer {
+  min-height: 22px;
+  color: var(--media-card-quiet);
+  font-size: 9.5px;
+  line-height: 11px;
+}
+
+.home-card .text-button {
+  min-height: 22px;
+  padding: 0 4px;
 }
 
 .home__media.is-empty {
-  background: transparent;
+  background: var(--widget-backplate);
 }
 
 .home__media:has(.media-summary:hover),
 .home__media:has(.icon-button:hover) {
-  background: transparent;
+  background: var(--widget-backplate-hover);
 }
 
 .media-summary,
@@ -612,7 +745,7 @@ button:focus-visible {
   color: var(--muted);
   font-size: 10px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: 4px;
   background: var(--surface-soft);
   cursor: pointer;
   transition:
@@ -634,7 +767,7 @@ button:focus-visible {
   justify-content: space-between;
   gap: 8px;
   color: var(--quiet);
-  font-size: 9.5px;
+  font-size: 10.5px;
   line-height: 1.2;
 }
 
@@ -712,13 +845,12 @@ button:focus-visible {
   overflow: hidden;
 }
 
-.native-runtime .atoll-shell {
-  background: var(--shell-card-fill);
-}
-
 @media (prefers-reduced-transparency: reduce) {
   .atoll-shell {
-    background: var(--shell-card-fill);
+    background: var(--shell-opaque-fallback);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: inset 0 1px 0 var(--shell-material-highlight);
   }
 }
 
@@ -726,7 +858,8 @@ button:focus-visible {
   .atoll-shell {
     color: CanvasText;
     background: Canvas;
-    box-shadow: inset 0 0 0 1px CanvasText;
+    border: 1px solid CanvasText;
+    box-shadow: none;
   }
 }
 
@@ -848,7 +981,7 @@ button:focus-visible {
 
 .media-button--primary:hover:not(:disabled):not([aria-disabled="true"]) {
   color: var(--island-primary-ink);
-  background: #ffffff;
+  background: var(--island-primary-hover);
 }
 
 .media-button--primary:disabled {
@@ -867,6 +1000,147 @@ button:focus-visible {
   width: 19px;
   height: 19px;
   stroke-width: 2;
+}
+
+/* Expanded media follows the Review v2 component rather than the looser
+   home-panel rhythm: the cover is the top-left anchor, controls sit in their
+   own measured row, and the acrylic reveal stays visible on every edge. */
+.media-card .expanded__header--media {
+  min-height: 50px;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.media-card .cover--expanded {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.media-card .media-title {
+  align-self: flex-start;
+  margin-top: 5px;
+}
+
+.media-card .media-title strong {
+  color: var(--media-card-title);
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.media-card .media-title small {
+  margin-top: 1px;
+  color: var(--media-card-muted);
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.media-card .icon-button--media-settings {
+  width: 28px;
+  height: 28px;
+  align-self: flex-start;
+  margin-top: 4px;
+  color: var(--media-card-quiet);
+}
+
+.media-card .icon-button--media-settings .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.media-card .media-playback {
+  grid-template-rows: 18px 52px;
+}
+
+.media-card .media-playback--without-progress {
+  grid-template-rows: 1fr;
+}
+
+.media-card .media-progress {
+  grid-template-rows: 2px 11px;
+  align-content: start;
+  row-gap: 3px;
+  margin-left: 56px;
+  padding-top: 2px;
+  padding-right: 2px;
+}
+
+.media-card .media-progress__track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--media-card-track);
+}
+
+.media-card .media-progress__time {
+  color: var(--media-card-quiet);
+  font-size: 9.5px;
+  font-weight: 550;
+  line-height: 11px;
+}
+
+.media-card .media-controls {
+  height: 52px;
+  gap: 8px;
+}
+
+.media-card .media-button {
+  color: var(--media-control-ink);
+  border: 1px solid var(--widget-control-stroke);
+  background: var(--widget-control-surface);
+  box-shadow: var(--widget-control-shadow);
+}
+
+.media-card .media-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--media-card-title);
+  background: var(--widget-control-hover);
+}
+
+.media-card .media-button:disabled {
+  background: var(--widget-control-surface);
+}
+
+.media-card .media-button--primary {
+  width: 42px;
+  height: 42px;
+  color: var(--media-progress-fill);
+  border-color: var(--media-primary-edge);
+  background: var(--media-primary-surface);
+  box-shadow: var(--media-primary-shadow);
+}
+
+.media-card .media-button--primary:hover:not(:disabled):not([aria-disabled="true"]) {
+  color: var(--media-progress-fill);
+  background: var(--media-primary-hover);
+}
+
+.media-card .media-button--primary:disabled {
+  background: var(--media-primary-surface);
+  box-shadow: var(--media-primary-shadow);
+}
+
+.media-card .expanded__footer {
+  min-height: 22px;
+  color: var(--media-card-quiet);
+  font-size: 9.5px;
+  line-height: 11px;
+}
+
+.media-card .source-label {
+  gap: 5px;
+}
+
+.media-card .source-label__dot {
+  width: 4px;
+  height: 4px;
+}
+
+/* Media's no-session state belongs to the same edge-attached backplate;
+   avoid restoring a second card inside that hierarchy. */
+.media-card--empty .connect-empty {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .media-button.is-pending .icon {
@@ -921,8 +1195,10 @@ button:focus-visible {
   gap: 3px;
   padding: 12px 16px;
   text-align: center;
-  border-radius: 12px;
-  background: var(--surface-quiet);
+  border: 1px solid var(--widget-backplate-stroke);
+  border-radius: 8px;
+  background: var(--widget-backplate);
+  box-shadow: var(--widget-backplate-shadow);
 }
 
 .connect-empty strong {
@@ -970,8 +1246,10 @@ button:focus-visible {
   padding: 7px 8px;
   color: var(--text);
   text-align: left;
-  border-radius: 12px;
-  background: var(--surface-raised);
+  border: 1px solid var(--widget-backplate-stroke);
+  border-radius: 8px;
+  background: var(--widget-backplate);
+  box-shadow: var(--widget-backplate-shadow);
 }
 
 button.setting-row {
@@ -979,7 +1257,7 @@ button.setting-row {
 }
 
 button.setting-row:hover {
-  background: var(--surface-hover);
+  background: var(--widget-backplate-hover);
 }
 
 .setting-row > span:first-child {
@@ -1051,9 +1329,10 @@ button.setting-row:hover {
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border-radius: 999px;
-  background: var(--surface-raised);
-  box-shadow: inset 0 0 0 1px var(--transport-edge);
+  border: 1px solid var(--widget-control-stroke);
+  border-radius: 7px;
+  background: var(--widget-control-surface);
+  box-shadow: var(--widget-control-shadow);
 }
 
 .language-picker button {
@@ -1061,7 +1340,7 @@ button.setting-row:hover {
   height: 22px;
   flex: 1;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: 4px;
   background: transparent;
 }
 
@@ -1113,7 +1392,10 @@ button.setting-row:hover {
 
 @keyframes island-cover-expand {
   from {
-    transform: translate(-10px, -6px) scale(0.76923);
+    /* Compact cover: 40px at (8, 8). Review v2 expanded cover: 46px at
+       (24, 20). Keep the shared cover visually continuous across the shell
+       resize instead of beginning from the previous 52px layout. */
+    transform: translate(-16px, -12px) scale(0.869565);
   }
   to {
     transform: translate(0) scale(1);
@@ -1132,7 +1414,7 @@ button.setting-row:hover {
 }
 
 /* The native shell establishes the footprint first. Content is then released
-   from the same black volume in a deliberate, readable order. */
+   from the same Acrylic volume in a deliberate, readable order. */
 .compact.shell-entering .compact-media__open,
 .compact.shell-entering > .mark,
 .compact.shell-entering > .compact__glyph {
@@ -1186,8 +1468,7 @@ button.setting-row:hover {
   animation: island-content-reveal 150ms var(--ease-island) 56ms both;
 }
 
-#app[data-transition="expanded-collapse"] .reef.shell-entering .reef__mark,
-#app[data-transition="expanded-collapse"] .reef.shell-entering .reef__activity {
+#app[data-transition="expanded-collapse"] .reef.shell-entering .reef__mark {
   animation: island-core-settle 120ms var(--ease-island) 40ms both;
 }
 

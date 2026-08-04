@@ -6,3 +6,7 @@ src-tauri/gen/
 .DS_Store
 .impeccable/runtime/
 tauri-scaffold/
+.claude/
+.tmp-capture/
+.test-tiny.png
+artifacts/

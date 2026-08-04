@@ -102,13 +102,13 @@ test("falls back to English for an unsupported persisted language", () => {
   assert.equal(loadSettings().language, "en");
 });
 
-test("migrates legacy edge-attached margins to the Island's fixed visible inset", () => {
+test("migrates legacy margins to the Island's fixed edge-attached anchor", () => {
   storage.setItem(
     SETTINGS_KEY,
     JSON.stringify({ ...DEFAULT_SETTINGS, topMargin: 12 }),
   );
 
-  assert.equal(loadSettings().topMargin, 8);
+  assert.equal(loadSettings().topMargin, -12);
   const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<string, unknown>;
   assert.equal("topMargin" in stored, false);
 });

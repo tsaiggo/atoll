@@ -23,7 +23,7 @@ Atoll is a Windows status island: it borrows the interaction grammar of a compac
 ## Operating Context
 
 - Windows 11 desktop sessions, including high-DPI, multi-monitor, negative-coordinate, portrait, ultrawide, and remote-desktop layouts.
-- The primary display’s physical top-center is the first-release anchor; the Island holds an 8 DIP top inset so all four corners remain visible and clickable.
+- The primary display’s physical top-center is the first-release anchor. The native host begins 12 DIP above the display edge, so Windows crops its upper corners and the visible Island is edge-attached while its lower silhouette remains rounded and clickable.
 - Users may be typing, watching full-screen media, gaming, or listening to media while Atoll remains resident.
 - The default global shortcut is `Ctrl + Shift + Space`.
 - Tray and context menus are always-available recovery and control surfaces.

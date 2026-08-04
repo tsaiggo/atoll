@@ -1,6 +1,8 @@
 import { normalizeLanguage, type UiLanguage } from "./i18n";
 
-const ISLAND_TOP_MARGIN = 8;
+// Keep this primitive local: config is deliberately importable in isolation by
+// the migration test harness. It mirrors shell/geometry.ts' 12 DIP host bleed.
+const ISLAND_TOP_MARGIN = -12;
 
 export interface AtollSettings {
   language: UiLanguage;
@@ -41,9 +43,9 @@ export function loadSettings(): AtollSettings {
           ? parsed.hideInFullscreen
           : DEFAULT_SETTINGS.hideInFullscreen,
       expandedTimeoutMs: clampNumber(parsed.expandedTimeoutMs, 3000, 30000, DEFAULT_SETTINGS.expandedTimeoutMs),
-      // The Status Island is deliberately fixed to one visible top inset. Older
-      // releases persisted this as a user-adjustable offset, which can leave a
-      // migrated Island off its intended optical baseline.
+      // The Status Island is deliberately fixed to one edge-attached anchor.
+      // Older releases persisted this as a user-adjustable offset, which can
+      // leave a migrated Island off its intended optical baseline.
       topMargin: ISLAND_TOP_MARGIN,
     };
     if (RETIRED_SETTING_KEYS.some((key) => key in parsed)) saveSettings(settings);
