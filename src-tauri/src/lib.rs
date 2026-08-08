@@ -1,5 +1,6 @@
 mod app_controls;
 mod connect;
+mod energy;
 mod fullscreen;
 mod runtime;
 mod shell;
@@ -21,6 +22,7 @@ pub fn run() {
                 .build(),
         )
         .manage(connect::ConnectRuntime::default())
+        .manage(energy::EnergyRuntime::default())
         .manage(runtime::RuntimeState::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -30,6 +32,7 @@ pub fn run() {
             app.manage(quick_menu);
             app_controls::setup_shortcut(app)?;
             connect::start(app.handle().clone());
+            energy::start_watcher(app.handle().clone());
             volume::start_watcher(app.handle().clone());
             fullscreen::start_watcher(app.handle().clone());
             shell::start_display_watcher(app.handle().clone());
@@ -40,7 +43,12 @@ pub fn run() {
             app_controls::show_context_menu,
             app_controls::set_menu_language,
             connect::media_command,
+            connect::media_seek,
+            connect::media_select_source,
             connect::media_status,
+            energy::energy_status,
+            volume::set_system_volume,
+            volume::set_system_mute,
             fullscreen::is_fullscreen_active
         ])
         .run(tauri::generate_context!())

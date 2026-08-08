@@ -8,7 +8,7 @@ use serde_json::json;
 use super::{
     contract::{
         HubMessage, MediaAction, MediaConnectState, MediaConnectStatus, MediaSnapshot,
-        ProviderDescriptor, ProviderRequest, ProviderState,
+        ProviderDescriptor, ProviderRequest, ProviderSource, ProviderState,
     },
     hub,
     provider::{ConnectProvider, ProviderEventSink, ProviderMailbox},
@@ -29,11 +29,25 @@ struct RoutedCommand {
     generation: u64,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct RoutedSeek {
+    position_ms: u64,
+    target_id: String,
+    generation: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct RoutedSourceSelection {
+    source_id: Option<String>,
+}
+
 struct FakeProvider {
     descriptor: ProviderDescriptor,
     initial_state: ProviderState,
     controls: Receiver<FakeControl>,
     commands: Sender<RoutedCommand>,
+    seeks: Sender<RoutedSeek>,
+    source_selections: Sender<RoutedSourceSelection>,
     stopped: Sender<()>,
 }
 
@@ -89,6 +103,43 @@ impl ConnectProvider for FakeProvider {
                     let handled = self.commands.send(routed).is_ok();
                     let _ = reply.send(Ok(handled));
                 }
+                Ok(ProviderRequest::Seek {
+                    position_ms,
+                    target_id,
+                    generation,
+                    deadline,
+                    reply,
+                }) => {
+                    if Instant::now() >= deadline {
+                        let _ = reply
+                            .send(Err("The media seek expired before it could run".to_string()));
+                        continue;
+                    }
+                    let routed = RoutedSeek {
+                        position_ms,
+                        target_id,
+                        generation,
+                    };
+                    let handled = self.seeks.send(routed).is_ok();
+                    let _ = reply.send(Ok(handled));
+                }
+                Ok(ProviderRequest::SelectSource {
+                    source_id,
+                    deadline,
+                    reply,
+                }) => {
+                    if Instant::now() >= deadline {
+                        let _ = reply.send(Err(
+                            "The media source selection expired before it could run".to_string(),
+                        ));
+                        continue;
+                    }
+                    let handled = self
+                        .source_selections
+                        .send(RoutedSourceSelection { source_id })
+                        .is_ok();
+                    let _ = reply.send(Ok(handled));
+                }
                 Ok(ProviderRequest::Refresh) => {}
                 Ok(ProviderRequest::Shutdown) | Err(RecvTimeoutError::Disconnected) => return,
                 Err(RecvTimeoutError::Timeout) => {}
@@ -100,6 +151,8 @@ impl ConnectProvider for FakeProvider {
 struct FakeHandle {
     controls: Sender<FakeControl>,
     commands: Receiver<RoutedCommand>,
+    seeks: Receiver<RoutedSeek>,
+    source_selections: Receiver<RoutedSourceSelection>,
     stopped: Receiver<()>,
 }
 
@@ -110,6 +163,8 @@ fn fake_provider(
 ) -> (Box<dyn ConnectProvider>, FakeHandle) {
     let (control_sender, controls) = mpsc::channel();
     let (commands, command_receiver) = mpsc::channel();
+    let (seeks, seek_receiver) = mpsc::channel();
+    let (source_selections, source_selection_receiver) = mpsc::channel();
     let (stopped, stopped_receiver) = mpsc::channel();
     (
         Box::new(FakeProvider {
@@ -117,11 +172,15 @@ fn fake_provider(
             initial_state,
             controls,
             commands,
+            seeks,
+            source_selections,
             stopped,
         }),
         FakeHandle {
             controls: control_sender,
             commands: command_receiver,
+            seeks: seek_receiver,
+            source_selections: source_selection_receiver,
             stopped: stopped_receiver,
         },
     )
@@ -139,6 +198,12 @@ fn provider_state(
         status: MediaConnectStatus::Ready,
         target_count,
         target_id: Some(target_id.to_string()),
+        sources: vec![ProviderSource {
+            source_id: target_id.to_string(),
+            label: "Test Player".to_string(),
+            session_count: target_count,
+        }],
+        active_source: Some(target_id.to_string()),
         generation,
         media: Some(MediaSnapshot {
             title: title.to_string(),
@@ -157,6 +222,59 @@ fn provider_state(
             artwork_data_url: Some("data:image/png;base64,dGVzdA==".to_string()),
         }),
     }
+}
+
+fn provider_state_with_seek(
+    provider_id: &'static str,
+    target_id: &str,
+    generation: u64,
+    target_count: u32,
+    title: &str,
+    playing: bool,
+) -> ProviderState {
+    let mut state = provider_state(
+        provider_id,
+        target_id,
+        generation,
+        target_count,
+        title,
+        playing,
+    );
+    state
+        .media
+        .as_mut()
+        .expect("test provider state should contain media")
+        .can_seek = true;
+    state
+}
+
+fn provider_state_with_sources(
+    provider_id: &'static str,
+    target_id: &str,
+    generation: u64,
+    target_count: u32,
+    title: &str,
+    playing: bool,
+    sources: &[(&str, &str, u32)],
+) -> ProviderState {
+    let mut state = provider_state(
+        provider_id,
+        target_id,
+        generation,
+        target_count,
+        title,
+        playing,
+    );
+    state.sources = sources
+        .iter()
+        .map(|(source_id, label, session_count)| ProviderSource {
+            source_id: (*source_id).to_string(),
+            label: (*label).to_string(),
+            session_count: *session_count,
+        })
+        .collect();
+    state.active_source = Some(target_id.to_string());
+    state
 }
 
 fn recv_state_until(
@@ -192,6 +310,44 @@ fn send_command(
     response
         .recv_timeout(TEST_TIMEOUT)
         .expect("the Connect hub should answer a command")
+}
+
+fn send_seek(
+    hub: &hub::HubHandle,
+    position_ms: u64,
+    session_revision: u64,
+    deadline: Instant,
+) -> Result<bool, String> {
+    let (reply, response) = mpsc::sync_channel(1);
+    hub.send(HubMessage::Seek {
+        position_ms,
+        session_revision,
+        deadline,
+        reply,
+    })
+    .expect("the Connect hub should accept a seek request");
+    response
+        .recv_timeout(TEST_TIMEOUT)
+        .expect("the Connect hub should answer a seek request")
+}
+
+fn select_source(
+    hub: &hub::HubHandle,
+    provider_id: Option<&str>,
+    source_id: Option<&str>,
+    deadline: Instant,
+) -> Result<bool, String> {
+    let (reply, response) = mpsc::sync_channel(1);
+    hub.send(HubMessage::SelectSource {
+        provider_id: provider_id.map(str::to_string),
+        source_id: source_id.map(str::to_string),
+        deadline,
+        reply,
+    })
+    .expect("the Connect hub should accept a source selection");
+    response
+        .recv_timeout(TEST_TIMEOUT)
+        .expect("the Connect hub should answer a source selection")
 }
 
 #[test]
@@ -311,6 +467,13 @@ fn public_media_state_json_remains_compatible() {
         json!({
             "status": "ready",
             "session_count": 2,
+            "sources": [{
+                "provider_id": PROVIDER,
+                "source_id": "json-target",
+                "label": "Test Player",
+                "session_count": 2
+            }],
+            "manual_source": null,
             "media": {
                 "title": "Compatibility",
                 "artist": "Test Artist",
@@ -359,6 +522,240 @@ fn command_routes_to_selected_provider_target_and_local_generation() {
             target_id: "player-window-42".to_string(),
             generation: 37,
         }
+    );
+
+    let _ = fake.controls.send(FakeControl::Stop);
+    drop(hub);
+}
+
+#[test]
+fn seek_routes_to_selected_provider_target_and_local_generation() {
+    const PROVIDER: &str = "test.seek-routing";
+    let (provider, fake) = fake_provider(
+        PROVIDER,
+        10,
+        provider_state_with_seek(PROVIDER, "player-window-42", 37, 1, "Routing", false),
+    );
+    let (publisher, states) = mpsc::channel();
+    let hub = hub::start(vec![provider], publisher);
+    let state = recv_state_until(&states, |state| state.media.is_some());
+    let public_revision = state.media.expect("selected media").session_revision;
+
+    assert_eq!(
+        send_seek(&hub, 90_000, public_revision, Instant::now() + TEST_TIMEOUT),
+        Ok(true)
+    );
+    assert_eq!(
+        fake.seeks
+            .recv_timeout(TEST_TIMEOUT)
+            .expect("the provider should receive the routed seek"),
+        RoutedSeek {
+            position_ms: 90_000,
+            target_id: "player-window-42".to_string(),
+            generation: 37,
+        }
+    );
+
+    let _ = fake.controls.send(FakeControl::Stop);
+    drop(hub);
+}
+
+#[test]
+fn seek_rejects_unsupported_or_stale_sessions_before_provider_dispatch() {
+    const PROVIDER: &str = "test.seek-validation";
+    let (provider, fake) = fake_provider(
+        PROVIDER,
+        10,
+        provider_state(PROVIDER, "first-target", 11, 1, "First", false),
+    );
+    let (publisher, states) = mpsc::channel();
+    let hub = hub::start(vec![provider], publisher);
+    let first = recv_state_until(&states, |state| state.media.is_some());
+    let old_revision = first.media.expect("first selected media").session_revision;
+
+    assert_eq!(
+        send_seek(&hub, 90_000, old_revision, Instant::now() + TEST_TIMEOUT),
+        Err("The selected media session does not support seeking".to_string())
+    );
+    assert!(
+        fake.seeks.recv_timeout(Duration::from_millis(100)).is_err(),
+        "an unsupported seek must not reach the provider"
+    );
+
+    fake.controls
+        .send(FakeControl::Publish(Box::new(provider_state_with_seek(
+            PROVIDER,
+            "second-target",
+            12,
+            1,
+            "Second",
+            false,
+        ))))
+        .expect("fake provider should accept a state update");
+    let second = recv_state_until(&states, |state| {
+        state
+            .media
+            .as_ref()
+            .is_some_and(|media| media.title == "Second")
+    });
+    let current_revision = second
+        .media
+        .expect("second selected media")
+        .session_revision;
+    assert_ne!(old_revision, current_revision);
+
+    assert_eq!(
+        send_seek(&hub, 90_000, old_revision, Instant::now() + TEST_TIMEOUT),
+        Err("The selected media session changed".to_string())
+    );
+    assert!(
+        fake.seeks.recv_timeout(Duration::from_millis(100)).is_err(),
+        "a stale seek must not reach the provider after a source change"
+    );
+
+    let _ = fake.controls.send(FakeControl::Stop);
+    drop(hub);
+}
+
+#[test]
+fn source_selection_routes_to_the_provider_and_stales_the_previous_command() {
+    const PROVIDER: &str = "test.source-routing";
+    let sources = [("source-a", "Player A", 1), ("source-b", "Player B", 1)];
+    let (provider, fake) = fake_provider(
+        PROVIDER,
+        10,
+        provider_state_with_sources(PROVIDER, "source-a", 17, 2, "Source A", false, &sources),
+    );
+    let (publisher, states) = mpsc::channel();
+    let hub = hub::start(vec![provider], publisher);
+    let first = recv_state_until(&states, |state| state.media.is_some());
+    let old_revision = first.media.expect("first selected media").session_revision;
+
+    assert_eq!(
+        select_source(
+            &hub,
+            Some(PROVIDER),
+            Some("source-b"),
+            Instant::now() + TEST_TIMEOUT,
+        ),
+        Ok(true)
+    );
+    assert_eq!(
+        fake.source_selections
+            .recv_timeout(TEST_TIMEOUT)
+            .expect("the provider should receive the selected source"),
+        RoutedSourceSelection {
+            source_id: Some("source-b".to_string()),
+        }
+    );
+    let manually_selected = recv_state_until(&states, |state| {
+        state
+            .manual_source
+            .as_ref()
+            .is_some_and(|source| source.provider_id == PROVIDER && source.source_id == "source-b")
+    });
+    assert_eq!(manually_selected.sources.len(), 2);
+    assert!(
+        manually_selected.media.is_none(),
+        "the previously active source must not remain visible while the requested source changes"
+    );
+    assert_eq!(manually_selected.status, MediaConnectStatus::Checking);
+    assert_eq!(
+        send_command(&hub, "next", old_revision, Instant::now() + TEST_TIMEOUT,),
+        Err("The selected media source is changing".to_string())
+    );
+    assert!(
+        fake.commands
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "the previous source must not receive a command while a new source is pending"
+    );
+    assert_eq!(
+        send_seek(&hub, 90_000, old_revision, Instant::now() + TEST_TIMEOUT,),
+        Err("The selected media source is changing".to_string())
+    );
+    assert!(
+        fake.seeks.recv_timeout(Duration::from_millis(100)).is_err(),
+        "the previous source must not receive a seek while a new source is pending"
+    );
+
+    fake.controls
+        .send(FakeControl::Publish(Box::new(provider_state_with_sources(
+            PROVIDER, "source-b", 18, 2, "Source B", false, &sources,
+        ))))
+        .expect("fake provider should publish the selected source");
+    let second = recv_state_until(&states, |state| {
+        state
+            .media
+            .as_ref()
+            .is_some_and(|media| media.title == "Source B")
+    });
+    let current_revision = second
+        .media
+        .expect("second selected media")
+        .session_revision;
+    assert_ne!(old_revision, current_revision);
+    assert_eq!(
+        send_command(&hub, "next", old_revision, Instant::now() + TEST_TIMEOUT,),
+        Err("The selected media session changed".to_string())
+    );
+    assert!(
+        fake.commands
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "a stale command must not reach the provider after a source change"
+    );
+
+    fake.controls
+        .send(FakeControl::Publish(Box::new(provider_state_with_sources(
+            PROVIDER,
+            "source-a",
+            19,
+            1,
+            "Source A again",
+            false,
+            &[("source-a", "Player A", 1)],
+        ))))
+        .expect("fake provider should publish a source disappearance");
+    let automatic_fallback = recv_state_until(&states, |state| {
+        state.manual_source.is_none()
+            && state
+                .media
+                .as_ref()
+                .is_some_and(|media| media.title == "Source A again")
+    });
+    assert_eq!(automatic_fallback.sources.len(), 1);
+
+    let _ = fake.controls.send(FakeControl::Stop);
+    drop(hub);
+}
+
+#[test]
+fn source_selection_rejects_an_unknown_source_before_provider_dispatch() {
+    const PROVIDER: &str = "test.source-validation";
+    let (provider, fake) = fake_provider(
+        PROVIDER,
+        10,
+        provider_state(PROVIDER, "only-source", 2, 1, "Only source", false),
+    );
+    let (publisher, states) = mpsc::channel();
+    let hub = hub::start(vec![provider], publisher);
+    let _ = recv_state_until(&states, |state| state.media.is_some());
+
+    assert_eq!(
+        select_source(
+            &hub,
+            Some(PROVIDER),
+            Some("missing-source"),
+            Instant::now() + TEST_TIMEOUT,
+        ),
+        Err("The selected media source is unavailable".to_string())
+    );
+    assert!(
+        fake.source_selections
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "an invalid source must not reach the provider"
     );
 
     let _ = fake.controls.send(FakeControl::Stop);

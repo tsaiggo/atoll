@@ -1,13 +1,27 @@
 import type { AppViewModel, ExpandedPanel, PreviewMode } from "./app/types";
-import { consumeFirstRun, loadSettings, saveSettings } from "./config";
 import {
+  consumeFirstRun,
+  EXPANDED_AUTO_COLLAPSE_MS,
+  loadSettings,
+  saveSettings,
+} from "./config";
+import {
+  DEMO_ENERGY,
   DEMO_MEDIA,
+  DEMO_MEDIA_SOURCES,
+  formatPlaybackTime,
+  normalizeEnergy,
   normalizeMedia,
+  normalizeMediaSourceSelection,
+  normalizeMediaSources,
   type ContentKind,
+  type EnergyStatus,
   type MediaConnection,
+  type MediaSource,
   type MediaStatus,
   type NativeMediaPayload,
   type NativeMediaUpdatePayload,
+  type NativeEnergyPayload,
   type NativeVolumePayload,
   type ShellState,
   type VolumeStatus,
@@ -16,6 +30,8 @@ import {
   commandPendingMessage,
   mediaCommandEnabled,
   mediaIdentityFor,
+  normalizeMediaSeekPosition,
+  optimisticMediaSeek,
   optimisticPlaybackToggle,
   type MediaCommand,
   type MediaCommandFeedback,
@@ -23,10 +39,15 @@ import {
 import { copyFor, normalizeLanguage } from "./i18n";
 import {
   applyNativeShell,
+  getEnergyStatus,
   getFullscreen,
   getMediaStatus,
   nativeRuntime,
   runNativeMediaCommand,
+  runNativeMediaSeek,
+  selectNativeMediaSource,
+  setNativeSystemMute,
+  setNativeSystemVolume,
   setNativeMenuLanguage,
   showNativeContextMenu,
   subscribeNativeEvents,
@@ -48,6 +69,12 @@ interface PendingShellPresentation {
   next: Exclude<ShellState, "hidden">;
   animated: boolean;
   pendingPulse: MaterialPulse | null;
+}
+
+interface PendingMediaSeek {
+  readonly identity: string;
+  readonly positionMs: number;
+  readonly sessionRevision: number;
 }
 
 const appElement = document.querySelector<HTMLElement>("#app");
@@ -74,8 +101,23 @@ let lastVisibleShell: Exclude<ShellState, "hidden"> = "reef";
 let content: ContentKind = "idle";
 let expandedPanel: ExpandedPanel = "home";
 let media: MediaStatus | null = null;
-let mediaConnection: MediaConnection = { status: "checking", sessionCount: 0 };
+let mediaConnection: MediaConnection = {
+  status: "checking",
+  sessionCount: 0,
+  sources: [],
+  manualSource: null,
+};
 let volume: VolumeStatus = { level: 0, muted: false };
+let energy: EnergyStatus = {
+  available: false,
+  todayMwh: 0,
+  dayKey: "",
+  trackingSinceMs: 0,
+  partial: false,
+  history: [],
+  source: "battery_discharge",
+};
+let selectedEnergyDayKey: string | null = null;
 let fullscreen = false;
 let fullscreenOverride = false;
 let demoOverride: ContentKind | null = null;
@@ -88,6 +130,12 @@ let volumeVisibleUntil = 0;
 let lastMediaIdentity = "";
 let mediaEventsReady = false;
 let pendingMediaCommand: MediaCommand | null = null;
+let pendingMediaSeek: PendingMediaSeek | null = null;
+let mediaSeekCommitId: number | null = null;
+let mediaSeekEditing = false;
+let restoreMediaSeekFocus = false;
+let pendingSourceSelection = false;
+let volumeCommandRevision = 0;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
 let mediaCommandFeedbackId: number | null = null;
 let firstRun = previewMode ? false : consumeFirstRun();
@@ -107,6 +155,8 @@ function isPreviewMode(value: string | null): value is PreviewMode {
     value === "compact-media" ||
     value === "expanded-home" ||
     value === "expanded-media" ||
+    value === "expanded-energy" ||
+    value === "expanded-sources" ||
     value === "settings"
   );
 }
@@ -114,7 +164,11 @@ function isPreviewMode(value: string | null): value is PreviewMode {
 app.addEventListener("click", onClick);
 app.addEventListener("contextmenu", onContextMenu);
 app.addEventListener("pointerdown", onExpandedActivity);
+app.addEventListener("pointerup", endMediaSeekEditing);
+app.addEventListener("pointercancel", endMediaSeekEditing);
 app.addEventListener("wheel", onExpandedActivity, { passive: true });
+app.addEventListener("input", onInput);
+app.addEventListener("change", onChange);
 window.addEventListener("keydown", onKeyDown);
 reducedMotion.addEventListener("change", () => {
   render();
@@ -146,6 +200,7 @@ async function startApplication(): Promise<void> {
     );
     const subscriptions = await subscribeNativeEvents({
       onAction: applyExternalAction,
+      onEnergy: updateEnergy,
       onMediaUpdate: updateMediaConnect,
       onVolume: updateVolume,
       onFullscreenChanged: (payload) => {
@@ -175,12 +230,25 @@ async function startApplication(): Promise<void> {
     return null;
   });
   if (initialMedia) updateMediaConnect(initialMedia);
+  const initialEnergy = await getEnergyStatus().catch((error: unknown) => {
+    console.warn("Unable to read the initial energy state", error);
+    return null;
+  });
+  if (initialEnergy) updateEnergy(initialEnergy);
   mediaEventsReady = true;
 }
 
 function configurePreview(mode: PreviewMode): void {
   media = { ...DEMO_MEDIA };
-  mediaConnection = { status: "ready", sessionCount: 1 };
+  volume = { level: 0.68, muted: false };
+  energy = { ...DEMO_ENERGY };
+  selectedEnergyDayKey = energy.dayKey;
+  mediaConnection = {
+    status: "ready",
+    sessionCount: mode === "expanded-sources" ? 2 : 1,
+    sources: mode === "expanded-sources" ? DEMO_MEDIA_SOURCES : [],
+    manualSource: null,
+  };
   let previewShell: ShellState;
   switch (mode) {
     case "reef":
@@ -201,6 +269,16 @@ function configurePreview(mode: PreviewMode): void {
       expandedPanel = "media";
       previewShell = "expanded";
       break;
+    case "expanded-energy":
+      content = "idle";
+      expandedPanel = "energy";
+      previewShell = "expanded";
+      break;
+    case "expanded-sources":
+      content = "media";
+      expandedPanel = "sources";
+      previewShell = "expanded";
+      break;
     case "settings":
       content = "settings";
       expandedPanel = "settings";
@@ -219,12 +297,18 @@ function onClick(event: MouseEvent): void {
     void runAction(actionable.dataset.action ?? "", actionable.dataset.value);
     return;
   }
+  // Native range inputs own their pointer interaction. Letting the shell-level
+  // click handler see one would make a volume adjustment collapse Atoll.
+  if (target.closest<HTMLElement>("[data-control]")) {
+    event.stopPropagation();
+    return;
+  }
 
   if (shell === "reef") {
     expandedPanel = preferredExpandedPanel();
     void setShell("expanded");
   } else if (shell === "compact") {
-    expandedPanel = panelForContent(content);
+    expandedPanel = preferredExpandedPanel();
     void setShell("expanded");
   } else if (shell === "expanded") {
     collapse();
@@ -240,15 +324,81 @@ function onContextMenu(event: MouseEvent): void {
   }
 }
 
-function onExpandedActivity(): void {
+function onExpandedActivity(event?: Event): void {
+  const target = event?.target;
+  if (target instanceof HTMLInputElement && target.dataset.control === "media-seek") {
+    mediaSeekEditing = true;
+  }
   resetExpandedExpiry();
+}
+
+function endMediaSeekEditing(event: PointerEvent): void {
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.dataset.control === "media-seek") {
+    mediaSeekEditing = false;
+  }
+}
+
+function onInput(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.dataset.control === "system-volume") {
+    const level = volumeLevelFromControl(target.value);
+    if (level === null) return;
+
+    const percentage = Math.round(level * 100);
+    target.style.setProperty("--volume-level", `${percentage}%`);
+    target.setAttribute(
+      "aria-valuetext",
+      copyFor(settings.language).volume.accessibleValue(percentage, volume.muted),
+    );
+    target.parentElement
+      ?.querySelector<HTMLOutputElement>("[data-volume-value]")
+      ?.replaceChildren(String(percentage));
+    resetExpandedExpiry();
+    return;
+  }
+  if (target.dataset.control !== "media-seek") return;
+
+  const current = media;
+  const positionMs = current ? mediaSeekPositionFromControl(target, current) : null;
+  if (positionMs === null || !current) return;
+
+  mediaSeekEditing = true;
+  previewMediaSeek(target, current, positionMs);
+  resetExpandedExpiry();
+}
+
+function onChange(event: Event): void {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.dataset.control === "system-volume") {
+    const level = volumeLevelFromControl(target.value);
+    if (level !== null) void setSystemVolume(level);
+    return;
+  }
+  if (target.dataset.control !== "media-seek") return;
+
+  const current = media;
+  const positionMs = current ? mediaSeekPositionFromControl(target, current) : null;
+  mediaSeekEditing = false;
+  if (positionMs === null || !current || pendingMediaSeek !== null) return;
+  queueMediaSeek(current, positionMs, target);
 }
 
 function onKeyDown(event: KeyboardEvent): void {
   resetExpandedExpiry();
   if (event.key === "Escape" && shell === "expanded") {
     event.preventDefault();
-    collapse();
+    if (expandedPanel === "sources") {
+      expandedPanel = "media";
+      render();
+    } else if (expandedPanel === "energy") {
+      expandedPanel = "home";
+      render();
+    } else {
+      collapse();
+    }
   }
 }
 
@@ -267,6 +417,27 @@ async function runAction(action: string, value?: string): Promise<void> {
       expandedPanel = "media";
       await setShell("expanded");
       break;
+    case "open-energy":
+      selectedEnergyDayKey = energy.dayKey || null;
+      expandedPanel = "energy";
+      await setShell("expanded");
+      break;
+    case "select-energy-day":
+      if (value && hasEnergyRecordForDay(energy, value)) {
+        selectedEnergyDayKey = value;
+        render();
+      }
+      break;
+    case "open-sources":
+      if (mediaConnection.sources.length > 1 && !pendingSourceSelection) {
+        content = "media";
+        expandedPanel = "sources";
+        render();
+      }
+      break;
+    case "select-media-source":
+      await selectMediaSource(value);
+      break;
     case "open-settings":
       expandedPanel = "settings";
       content = "settings";
@@ -276,6 +447,9 @@ async function runAction(action: string, value?: string): Promise<void> {
     case "media-toggle":
     case "media-next":
       await sendMediaCommand(action.replace("media-", "") as MediaCommand);
+      break;
+    case "toggle-volume-mute":
+      await setSystemMute(!volume.muted);
       break;
     case "toggle-setting":
       toggleSetting(value);
@@ -380,7 +554,13 @@ function updateMediaConnect(payload: NativeMediaUpdatePayload): void {
     typeof payload.session_count === "number" && Number.isFinite(payload.session_count)
       ? Math.max(0, Math.floor(payload.session_count))
       : 0;
-  mediaConnection = { status, sessionCount };
+  const sources = normalizeMediaSources(payload.sources);
+  mediaConnection = {
+    status,
+    sessionCount,
+    sources,
+    manualSource: normalizeMediaSourceSelection(payload.manual_source, sources),
+  };
   updateMedia(payload.media ?? null);
 }
 
@@ -399,10 +579,35 @@ function updateMedia(payload: NativeMediaPayload | null, fromDemo = false): void
     next.artworkDataUrl = media.artworkDataUrl;
   }
   const mediaIdentity = next ? mediaIdentityFor(next) : "";
+  if (
+    pendingMediaSeek &&
+    next &&
+    next.sessionRevision === pendingMediaSeek.sessionRevision &&
+    mediaIdentity === pendingMediaSeek.identity
+  ) {
+    return;
+  }
+  if (
+    mediaSeekEditing &&
+    next &&
+    media &&
+    next.sessionRevision === media.sessionRevision &&
+    mediaIdentity === mediaIdentityFor(media)
+  ) {
+    return;
+  }
+  if (pendingMediaSeek) cancelPendingMediaSeek();
   const trackChanged = Boolean(next && mediaIdentity !== lastMediaIdentity);
   media = next;
   lastMediaIdentity = mediaIdentity;
-  if (fromDemo) mediaConnection = { status: "ready", sessionCount: 1 };
+  if (fromDemo) {
+    mediaConnection = {
+      status: "ready",
+      sessionCount: 1,
+      sources: [],
+      manualSource: null,
+    };
+  }
   scheduleMediaProgressTick();
   if (next && trackChanged && (fromDemo || mediaEventsReady)) {
     surfaceEvent("media");
@@ -440,6 +645,135 @@ function updateVolume(payload: NativeVolumePayload): void {
   volumeVisibleUntil = Date.now() + 1800;
   surfaceEvent("home");
   scheduleVisibleTransientExpiry();
+}
+
+function updateEnergy(payload: NativeEnergyPayload): void {
+  const next = normalizeEnergy(payload);
+  const changed =
+    next.available !== energy.available ||
+    next.todayMwh !== energy.todayMwh ||
+    next.dayKey !== energy.dayKey ||
+    next.trackingSinceMs !== energy.trackingSinceMs ||
+    next.partial !== energy.partial ||
+    !sameEnergyHistory(next.history, energy.history) ||
+    next.source !== energy.source;
+  if (!changed) return;
+  const wasViewingCurrentDay = selectedEnergyDayKey === energy.dayKey;
+  energy = next;
+
+  if (
+    selectedEnergyDayKey === null ||
+    wasViewingCurrentDay ||
+    !hasEnergyRecordForDay(energy, selectedEnergyDayKey)
+  ) {
+    selectedEnergyDayKey = energy.dayKey || null;
+  }
+
+  // Energy is a passive Home status. A sampler update must not interrupt the
+  // user or compete with media and volume for the Island.
+  if (shell === "expanded" && (expandedPanel === "home" || expandedPanel === "energy")) {
+    render();
+  }
+}
+
+function hasEnergyRecordForDay(status: EnergyStatus, dayKey: string): boolean {
+  return (status.available && status.dayKey === dayKey) || status.history.some((entry) => entry.dayKey === dayKey);
+}
+
+function sameEnergyHistory(
+  left: readonly EnergyStatus["history"][number][],
+  right: readonly EnergyStatus["history"][number][],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (entry, index) =>
+        entry.dayKey === right[index]?.dayKey &&
+        entry.totalMwh === right[index]?.totalMwh &&
+        entry.partial === right[index]?.partial,
+    )
+  );
+}
+
+function volumeLevelFromControl(value: string): number | null {
+  const percentage = Number(value);
+  if (!Number.isFinite(percentage)) return null;
+  return Math.min(1, Math.max(0, percentage / 100));
+}
+
+function mediaSeekPositionFromControl(
+  control: HTMLInputElement,
+  current: MediaStatus,
+): number | null {
+  if (control.dataset.sessionRevision !== String(current.sessionRevision)) return null;
+  const seconds = Number(control.value);
+  if (!Number.isFinite(seconds)) return null;
+  return normalizeMediaSeekPosition(current, seconds * 1_000);
+}
+
+function previewMediaSeek(
+  control: HTMLInputElement,
+  current: MediaStatus,
+  positionMs: number,
+): void {
+  const durationMs = current.durationMs;
+  if (durationMs === undefined || durationMs <= 0) return;
+  const ratio = Math.min(1, Math.max(0, positionMs / durationMs));
+  const copy = copyFor(settings.language).media;
+  control.style.setProperty("--media-progress", `${ratio * 100}%`);
+  control.setAttribute(
+    "aria-valuetext",
+    copy.progressValue(formatPlaybackTime(positionMs), formatPlaybackTime(durationMs)),
+  );
+  control
+    .closest(".media-progress")
+    ?.querySelector<HTMLElement>("[data-media-elapsed]")
+    ?.replaceChildren(formatPlaybackTime(positionMs));
+}
+
+async function setSystemVolume(level: number): Promise<void> {
+  const previous = volume;
+  const revision = ++volumeCommandRevision;
+  volume = { ...volume, level };
+
+  if (!nativeRuntime || demoOverride === "volume") {
+    updateVolume({ level, muted: volume.muted });
+    return;
+  }
+
+  let accepted = false;
+  try {
+    accepted = await setNativeSystemVolume(level);
+  } catch (error: unknown) {
+    console.warn("Unable to change system volume", error);
+  }
+  if (!accepted && revision === volumeCommandRevision) {
+    volume = previous;
+    render();
+  }
+}
+
+async function setSystemMute(muted: boolean): Promise<void> {
+  const previous = volume;
+  const revision = ++volumeCommandRevision;
+  volume = { ...volume, muted };
+  render();
+
+  if (!nativeRuntime || demoOverride === "volume") {
+    updateVolume({ level: volume.level, muted });
+    return;
+  }
+
+  let accepted = false;
+  try {
+    accepted = await setNativeSystemMute(muted);
+  } catch (error: unknown) {
+    console.warn("Unable to change system mute state", error);
+  }
+  if (!accepted && revision === volumeCommandRevision) {
+    volume = previous;
+    render();
+  }
 }
 
 function scheduleMediaProgressTick(): void {
@@ -697,7 +1031,7 @@ function scheduleVisibleTransientExpiry(): void {
 
 function setExpandedExpiry(): void {
   clearExpandedExpiry();
-  expandedExpiryDeadline = Date.now() + settings.expandedTimeoutMs;
+  expandedExpiryDeadline = Date.now() + EXPANDED_AUTO_COLLAPSE_MS;
   scheduleExpandedExpiry(expandedSessionRevision);
 }
 
@@ -707,8 +1041,13 @@ function scheduleExpandedExpiry(sessionRevision: number): void {
     expandedExpiryId = null;
     if (sessionRevision !== expandedSessionRevision || shell !== "expanded") return;
 
-    if (pendingMediaCommand !== null) {
-      expandedExpiryDeadline = Date.now() + settings.expandedTimeoutMs;
+    if (
+      pendingMediaCommand !== null ||
+      pendingMediaSeek !== null ||
+      mediaSeekEditing ||
+      pendingSourceSelection
+    ) {
+      expandedExpiryDeadline = Date.now() + EXPANDED_AUTO_COLLAPSE_MS;
       scheduleExpandedExpiry(sessionRevision);
       return;
     }
@@ -725,7 +1064,7 @@ function scheduleExpandedExpiry(sessionRevision: number): void {
 
 function resetExpandedExpiry(): void {
   if (previewMode || shell !== "expanded") return;
-  expandedExpiryDeadline = Date.now() + settings.expandedTimeoutMs;
+  expandedExpiryDeadline = Date.now() + EXPANDED_AUTO_COLLAPSE_MS;
   if (expandedExpiryId === null) scheduleExpandedExpiry(expandedSessionRevision);
 }
 
@@ -738,7 +1077,14 @@ function clearExpandedExpiry(): void {
 
 async function sendMediaCommand(command: MediaCommand): Promise<void> {
   const current = media;
-  if (!current || !mediaCommandEnabled(command, current) || pendingMediaCommand !== null) return;
+  if (
+    !current ||
+    !mediaCommandEnabled(command, current) ||
+    pendingMediaCommand !== null ||
+    pendingMediaSeek !== null
+  ) {
+    return;
+  }
   queueMaterialPulse("control");
 
   if (!nativeRuntime || demoOverride === "media") {
@@ -781,6 +1127,138 @@ async function sendMediaCommand(command: MediaCommand): Promise<void> {
   render();
 }
 
+async function selectMediaSource(value?: string): Promise<void> {
+  if (pendingSourceSelection || pendingMediaSeek !== null) return;
+  const source = sourceForSelectionValue(value);
+  if (value !== "auto" && !source) return;
+
+  pendingSourceSelection = true;
+  resetExpandedExpiry();
+  render();
+
+  let accepted = false;
+  try {
+    if (!nativeRuntime) {
+      applyDemoSourceSelection(source);
+      accepted = true;
+    } else {
+      accepted = await selectNativeMediaSource(source?.providerId, source?.sourceId);
+      if (accepted) {
+        const refreshed = await getMediaStatus();
+        updateMediaConnect(refreshed);
+      }
+    }
+  } catch (error: unknown) {
+    console.warn("Unable to select the media source", error);
+  }
+
+  pendingSourceSelection = false;
+  expandedPanel = "media";
+  if (!accepted) {
+    setMediaCommandFeedback(copyFor(settings.language).media.sourceChangeUnavailable, true, 1600);
+  }
+  render();
+}
+
+function sourceForSelectionValue(value?: string): MediaSource | null {
+  if (value === "auto") return null;
+  const index = Number(value);
+  if (!Number.isInteger(index) || index < 0 || index >= mediaConnection.sources.length) {
+    return null;
+  }
+  return mediaConnection.sources[index] ?? null;
+}
+
+function applyDemoSourceSelection(source: MediaSource | null): void {
+  mediaConnection = {
+    ...mediaConnection,
+    manualSource: source
+      ? { providerId: source.providerId, sourceId: source.sourceId }
+      : null,
+  };
+  if (source && media) {
+    media = {
+      ...media,
+      source: source.label,
+      sessionRevision: media.sessionRevision + 1,
+      positionUpdatedAtMs: Date.now(),
+    };
+  }
+}
+
+function queueMediaSeek(
+  current: MediaStatus,
+  positionMs: number,
+  control: HTMLInputElement,
+): void {
+  const request: PendingMediaSeek = {
+    identity: mediaIdentityFor(current),
+    positionMs,
+    sessionRevision: current.sessionRevision,
+  };
+  pendingMediaSeek = request;
+  restoreMediaSeekFocus ||= document.activeElement === control;
+  control.dataset.seekPending = "true";
+  resetExpandedExpiry();
+  if (mediaSeekCommitId !== null) window.clearTimeout(mediaSeekCommitId);
+  mediaSeekCommitId = window.setTimeout(() => {
+    mediaSeekCommitId = null;
+    void commitMediaSeek(request);
+  }, 140);
+}
+
+function cancelPendingMediaSeek(): void {
+  if (mediaSeekCommitId !== null) window.clearTimeout(mediaSeekCommitId);
+  mediaSeekCommitId = null;
+  pendingMediaSeek = null;
+  mediaSeekEditing = false;
+  restoreMediaSeekFocus = false;
+}
+
+async function commitMediaSeek(request: PendingMediaSeek): Promise<void> {
+  if (pendingMediaSeek !== request) return;
+  const current = media;
+  const sameTarget =
+    current?.sessionRevision === request.sessionRevision &&
+    mediaIdentityFor(current) === request.identity;
+  if (!current || !sameTarget) {
+    cancelPendingMediaSeek();
+    render();
+    return;
+  }
+
+  queueMaterialPulse("control");
+  const previous = current;
+  const optimistic = optimisticMediaSeek(current, request.positionMs);
+  media = optimistic;
+
+  if (!nativeRuntime || demoOverride === "media") {
+    pendingMediaSeek = null;
+    render();
+    return;
+  }
+
+  render();
+  let accepted = false;
+  try {
+    accepted = await runNativeMediaSeek(request.positionMs, request.sessionRevision);
+  } catch (error: unknown) {
+    console.warn("Unable to seek media playback", error);
+  }
+
+  if (pendingMediaSeek !== request) return;
+  const currentTarget =
+    media?.sessionRevision === request.sessionRevision &&
+    mediaIdentityFor(media) === request.identity;
+  if (!accepted && currentTarget && media === optimistic) media = previous;
+
+  pendingMediaSeek = null;
+  if (!accepted && currentTarget) {
+    setMediaCommandFeedback(copyFor(settings.language).media.seekUnavailable, true, 1600);
+  }
+  render();
+}
+
 function setMediaCommandFeedback(
   feedback: string | null,
   failed = false,
@@ -807,14 +1285,8 @@ function toggleSetting(settingName?: string): void {
   reconcilePresentation();
 }
 
-function panelForContent(kind: ContentKind): ExpandedPanel {
-  if (kind === "media") return "media";
-  if (kind === "settings") return "settings";
-  return "home";
-}
-
 function preferredExpandedPanel(): ExpandedPanel {
-  return media ? "media" : "home";
+  return "home";
 }
 
 function render(): void {
@@ -826,8 +1298,12 @@ function render(): void {
     media,
     mediaConnection,
     volume,
+    energy,
+    selectedEnergyDayKey,
     settings,
     pendingMediaCommand,
+    pendingMediaSeek: pendingMediaSeek !== null,
+    pendingSourceSelection,
     mediaCommandFeedback,
     showInlineVolume: now < volumeVisibleUntil,
     animateContent: animateNextShellContent,
@@ -844,4 +1320,13 @@ function render(): void {
     lightTheme: lightColorScheme.matches,
   });
   scheduleMediaProgressTick();
+  restoreMediaSeekFocusIfReady();
+}
+
+function restoreMediaSeekFocusIfReady(): void {
+  if (!restoreMediaSeekFocus || pendingMediaSeek !== null) return;
+  const control = app.querySelector<HTMLInputElement>("[data-control='media-seek']");
+  if (!control || control.disabled) return;
+  control.focus({ preventScroll: true });
+  restoreMediaSeekFocus = false;
 }

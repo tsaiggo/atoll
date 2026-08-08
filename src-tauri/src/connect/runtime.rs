@@ -60,6 +60,52 @@ impl ConnectRuntime {
             .map_err(|_| "The media player did not respond".to_string())?
     }
 
+    pub(crate) fn seek(&self, position_ms: u64, session_revision: u64) -> Result<bool, String> {
+        let sender = self
+            .hub_sender
+            .lock()
+            .map_err(|_| "Media controls are unavailable".to_string())?
+            .clone()
+            .ok_or_else(|| "Windows media sessions are not ready".to_string())?;
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        sender
+            .send(HubMessage::Seek {
+                position_ms,
+                session_revision,
+                deadline: Instant::now() + COMMAND_TIMEOUT,
+                reply: reply_sender,
+            })
+            .map_err(|_| "The media worker is unavailable".to_string())?;
+        reply_receiver
+            .recv_timeout(COMMAND_REPLY_TIMEOUT)
+            .map_err(|_| "The media player did not respond".to_string())?
+    }
+
+    pub(crate) fn select_source(
+        &self,
+        provider_id: Option<String>,
+        source_id: Option<String>,
+    ) -> Result<bool, String> {
+        let sender = self
+            .hub_sender
+            .lock()
+            .map_err(|_| "Media controls are unavailable".to_string())?
+            .clone()
+            .ok_or_else(|| "Windows media sessions are not ready".to_string())?;
+        let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+        sender
+            .send(HubMessage::SelectSource {
+                provider_id,
+                source_id,
+                deadline: Instant::now() + COMMAND_TIMEOUT,
+                reply: reply_sender,
+            })
+            .map_err(|_| "The media worker is unavailable".to_string())?;
+        reply_receiver
+            .recv_timeout(COMMAND_REPLY_TIMEOUT)
+            .map_err(|_| "The media source did not respond".to_string())?
+    }
+
     pub(crate) fn publisher_store(&self) -> ConnectStateStore {
         self.state_store.clone()
     }
@@ -77,7 +123,9 @@ impl ConnectStateStore {
                 let next_source = state.media.as_ref().map(|media| media.source.as_str());
                 let connection_changed = latest.status != state.status
                     || latest.session_count != state.session_count
-                    || previous_source != next_source;
+                    || previous_source != next_source
+                    || latest.sources != state.sources
+                    || latest.manual_source != state.manual_source;
                 let preserve_artwork =
                     same_media_identity(latest.media.as_ref(), state.media.as_ref());
                 let artwork_unchanged = preserve_artwork
