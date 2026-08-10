@@ -7,14 +7,16 @@ const ISLAND_TOP_MARGIN = -12;
 export interface AtollSettings {
   language: UiLanguage;
   hideInFullscreen: boolean;
-  expandedTimeoutMs: number;
   topMargin: number;
 }
+
+// This is product behavior, rather than a user preference: a short dwell keeps
+// the island responsive without leaving the larger surface on screen too long.
+export const EXPANDED_AUTO_COLLAPSE_MS = 4000;
 
 export const DEFAULT_SETTINGS: AtollSettings = {
   language: "en",
   hideInFullscreen: true,
-  expandedTimeoutMs: 7000,
   topMargin: ISLAND_TOP_MARGIN,
 };
 
@@ -27,6 +29,7 @@ const RETIRED_SETTING_KEYS = [
   "timerBreaksFullscreen",
   "idleMode",
   "compactTimeoutMs",
+  "expandedTimeoutMs",
   "topMargin",
 ] as const;
 
@@ -42,7 +45,6 @@ export function loadSettings(): AtollSettings {
         typeof parsed.hideInFullscreen === "boolean"
           ? parsed.hideInFullscreen
           : DEFAULT_SETTINGS.hideInFullscreen,
-      expandedTimeoutMs: clampNumber(parsed.expandedTimeoutMs, 3000, 30000, DEFAULT_SETTINGS.expandedTimeoutMs),
       // The Status Island is deliberately fixed to one edge-attached anchor.
       // Older releases persisted this as a user-adjustable offset, which can
       // leave a migrated Island off its intended optical baseline.
@@ -80,14 +82,4 @@ export function consumeFirstRun(): boolean {
   } catch {
     return false;
   }
-}
-
-function clampNumber(
-  value: unknown,
-  minimum: number,
-  maximum: number,
-  fallback: number,
-): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(maximum, Math.max(minimum, value));
 }

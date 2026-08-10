@@ -32,11 +32,49 @@ export type MediaConnectStatus =
 export interface MediaConnection {
   status: MediaConnectStatus;
   sessionCount: number;
+  sources: readonly MediaSource[];
+  manualSource: MediaSourceSelection | null;
+}
+
+// A source is a media-producing application, not an individual browser tab or
+// player window. Windows exposes this boundary as an App User Model ID.
+export interface MediaSource {
+  providerId: string;
+  sourceId: string;
+  label: string;
+  sessionCount: number;
+}
+
+export interface MediaSourceSelection {
+  providerId: string;
+  sourceId: string;
 }
 
 export interface VolumeStatus {
   level: number;
   muted: boolean;
+}
+
+// Energy is deliberately scoped to battery discharge. Windows cannot
+// reliably report the wall-side energy use of every PC, so this value is
+// surfaced as the laptop battery energy used today rather than a utility-bill
+// measurement.
+export interface EnergyStatus {
+  available: boolean;
+  todayMwh: number;
+  dayKey: string;
+  trackingSinceMs: number;
+  partial: boolean;
+  // Completed local days only. The active day remains a separate live value so
+  // the history surface never presents an in-progress measurement as final.
+  history: readonly EnergyHistoryEntry[];
+  source: "battery_discharge";
+}
+
+export interface EnergyHistoryEntry {
+  dayKey: string;
+  totalMwh: number;
+  partial: boolean;
 }
 
 export interface NativeMediaPayload {
@@ -55,9 +93,23 @@ export interface NativeMediaPayload {
   artwork_data_url?: string | null;
 }
 
+export interface NativeMediaSourcePayload {
+  provider_id?: string;
+  source_id?: string;
+  label?: string;
+  session_count?: number;
+}
+
+export interface NativeMediaSourceSelectionPayload {
+  provider_id?: string;
+  source_id?: string;
+}
+
 export interface NativeMediaUpdatePayload {
   status?: MediaConnectStatus;
   session_count?: number;
+  sources?: readonly NativeMediaSourcePayload[];
+  manual_source?: NativeMediaSourceSelectionPayload | null;
   media?: NativeMediaPayload | null;
 }
 
@@ -65,6 +117,22 @@ export interface NativeVolumePayload {
   level: number;
   muted: boolean;
   initial?: boolean;
+}
+
+export interface NativeEnergyPayload {
+  available?: boolean;
+  today_mwh?: number | null;
+  day_key?: string | null;
+  tracking_since_ms?: number | null;
+  partial?: boolean;
+  history?: readonly NativeEnergyHistoryPayload[];
+  source?: string | null;
+}
+
+export interface NativeEnergyHistoryPayload {
+  day_key?: string | null;
+  total_mwh?: number | null;
+  partial?: boolean;
 }
 
 export const DEMO_MEDIA: MediaStatus = {
@@ -81,6 +149,111 @@ export const DEMO_MEDIA: MediaStatus = {
   positionUpdatedAtMs: Date.now(),
   sessionRevision: 1,
 };
+
+export const DEMO_MEDIA_SOURCES: readonly MediaSource[] = [
+  {
+    providerId: "builtin.windows-media-session",
+    sourceId: "atoll.demo.player",
+    label: "Atoll Demo",
+    sessionCount: 1,
+  },
+  {
+    providerId: "builtin.windows-media-session",
+    sourceId: "atoll.demo.browser",
+    label: "Browser player",
+    sessionCount: 1,
+  },
+];
+
+export const DEMO_ENERGY: EnergyStatus = {
+  available: true,
+  todayMwh: 420_000,
+  dayKey: "2026-08-08",
+  trackingSinceMs: Date.now() - 6 * 60 * 60 * 1_000,
+  partial: false,
+  history: [
+    { dayKey: "2026-08-07", totalMwh: 358_000, partial: false },
+    { dayKey: "2026-08-06", totalMwh: 612_000, partial: false },
+    { dayKey: "2026-08-05", totalMwh: 184_000, partial: true },
+    { dayKey: "2026-08-04", totalMwh: 496_000, partial: false },
+  ],
+  source: "battery_discharge",
+};
+
+export function normalizeEnergy(
+  payload: NativeEnergyPayload | null | undefined,
+): EnergyStatus {
+  const todayMwh = optionalNonNegativeNumber(payload?.today_mwh);
+  const available = payload?.available === true && todayMwh !== undefined;
+  const dayKey = cleanEnergyDayKey(payload?.day_key);
+  return {
+    available,
+    todayMwh: todayMwh ?? 0,
+    dayKey,
+    trackingSinceMs: optionalNonNegativeNumber(payload?.tracking_since_ms) ?? 0,
+    partial: available && payload?.partial === true,
+    history: normalizeEnergyHistory(payload?.history, dayKey),
+    // The current MVP has one honest source and must not imply wall power.
+    source: "battery_discharge",
+  };
+}
+
+function normalizeEnergyHistory(
+  payload: readonly NativeEnergyHistoryPayload[] | undefined,
+  activeDayKey: string,
+): EnergyHistoryEntry[] {
+  if (!Array.isArray(payload)) return [];
+
+  const byDay = new Map<string, EnergyHistoryEntry>();
+  for (const entry of payload) {
+    const dayKey = cleanEnergyDayKey(entry?.day_key);
+    const totalMwh = optionalNonNegativeNumber(entry?.total_mwh);
+    if (!dayKey || dayKey === activeDayKey || totalMwh === undefined) continue;
+    byDay.set(dayKey, {
+      dayKey,
+      totalMwh,
+      partial: entry?.partial === true,
+    });
+  }
+
+  return [...byDay.values()]
+    .sort((left, right) => right.dayKey.localeCompare(left.dayKey))
+    .slice(0, 7);
+}
+
+export interface EnergyMeasurement {
+  readonly value: string;
+  readonly unit: string;
+}
+
+// Keep an honest, visibly changing reading at small values. Battery telemetry
+// arrives in mWh, where a 0.06 Wh discharge is real but would round to 0.00
+// when presented only as kWh. The unit steps up once the value is meaningful.
+export function formatEnergyMeasurement(
+  milliwattHours: number,
+  language: "en" | "zh-CN",
+): EnergyMeasurement {
+  const normalizedMwh = Number.isFinite(milliwattHours) ? Math.max(0, milliwattHours) : 0;
+  const locale = language === "zh-CN" ? "zh-CN" : "en-US";
+  const twoDecimal = (value: number): string => new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+
+  if (normalizedMwh > 0 && normalizedMwh < 10) {
+    return {
+      value: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(normalizedMwh),
+      unit: "mWh",
+    };
+  }
+  if (normalizedMwh < 10_000) {
+    return { value: twoDecimal(normalizedMwh / 1_000), unit: "Wh" };
+  }
+  return {
+    value: twoDecimal(normalizedMwh / 1_000_000),
+    unit: language === "zh-CN" ? "度" : "kWh",
+  };
+}
 
 export function normalizeMedia(payload: NativeMediaPayload): MediaStatus | null {
   const title = cleanText(payload.title);
@@ -113,6 +286,49 @@ export function normalizeMedia(payload: NativeMediaPayload): MediaStatus | null 
   };
 }
 
+export function normalizeMediaSources(
+  payload: readonly NativeMediaSourcePayload[] | undefined,
+): MediaSource[] {
+  if (!Array.isArray(payload)) return [];
+  const sources = new Map<string, MediaSource>();
+  for (const raw of payload) {
+    const providerId = cleanIdentifier(raw.provider_id);
+    const sourceId = cleanIdentifier(raw.source_id);
+    if (!providerId || !sourceId) continue;
+    const key = `${providerId}\u0000${sourceId}`;
+    const sessionCount = Math.max(
+      0,
+      Math.floor(optionalNonNegativeNumber(raw.session_count) ?? 0),
+    );
+    const existing = sources.get(key);
+    if (existing) {
+      existing.sessionCount += sessionCount;
+      continue;
+    }
+    sources.set(key, {
+      providerId,
+      sourceId,
+      label: cleanText(raw.label) || "Windows media",
+      sessionCount,
+    });
+  }
+  return [...sources.values()];
+}
+
+export function normalizeMediaSourceSelection(
+  payload: NativeMediaSourceSelectionPayload | null | undefined,
+  sources: readonly MediaSource[],
+): MediaSourceSelection | null {
+  const providerId = cleanIdentifier(payload?.provider_id);
+  const sourceId = cleanIdentifier(payload?.source_id);
+  if (!providerId || !sourceId) return null;
+  return sources.some(
+    (source) => source.providerId === providerId && source.sourceId === sourceId,
+  )
+    ? { providerId, sourceId }
+    : null;
+}
+
 export function formatPlaybackTime(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
   const hours = Math.floor(totalSeconds / 3600);
@@ -133,6 +349,20 @@ export function mediaPositionMs(media: MediaStatus, now = Date.now()): number {
 
 function cleanText(value: string | undefined): string {
   return (value ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+}
+
+function cleanIdentifier(value: string | undefined): string {
+  return (value ?? "").trim().slice(0, 512);
+}
+
+function cleanEnergyDayKey(value: string | null | undefined): string {
+  const dayKey = (value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return "";
+  const [year, month, day] = dayKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? dayKey
+    : "";
 }
 
 function optionalNonNegativeNumber(value: number | null | undefined): number | undefined {

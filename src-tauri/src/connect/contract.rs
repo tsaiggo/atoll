@@ -35,7 +35,31 @@ pub(crate) enum MediaConnectStatus {
 pub(crate) struct MediaConnectState {
     pub(crate) status: MediaConnectStatus,
     pub(crate) session_count: u32,
+    pub(crate) sources: Vec<MediaSource>,
+    pub(crate) manual_source: Option<ManualMediaSource>,
     pub(crate) media: Option<MediaSnapshot>,
+}
+
+/// A source the frontend can offer for explicit, in-memory selection.
+///
+/// Source identifiers are owned by the provider. The Windows provider uses a
+/// source application's AUMID, which deliberately scopes selection to an app
+/// rather than to an unstable individual media session.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct MediaSource {
+    pub(crate) provider_id: String,
+    pub(crate) source_id: String,
+    pub(crate) label: String,
+    pub(crate) session_count: u32,
+}
+
+/// The user's current explicit source choice. It intentionally lives only in
+/// the Connect runtime: unavailable sources are cleared and normal automatic
+/// selection resumes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ManualMediaSource {
+    pub(crate) provider_id: String,
+    pub(crate) source_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -72,8 +96,19 @@ pub(crate) struct ProviderState {
     pub(crate) status: MediaConnectStatus,
     pub(crate) target_count: u32,
     pub(crate) target_id: Option<String>,
+    /// Distinct provider-owned sources that currently have active targets.
+    pub(crate) sources: Vec<ProviderSource>,
+    /// The source that produced `media`, if the provider has one.
+    pub(crate) active_source: Option<String>,
     pub(crate) generation: u64,
     pub(crate) media: Option<MediaSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ProviderSource {
+    pub(crate) source_id: String,
+    pub(crate) label: String,
+    pub(crate) session_count: u32,
 }
 
 impl ProviderState {
@@ -82,6 +117,8 @@ impl ProviderState {
             status: MediaConnectStatus::Checking,
             target_count: 0,
             target_id: None,
+            sources: Vec::new(),
+            active_source: None,
             generation: 0,
             media: None,
         }
@@ -103,6 +140,18 @@ pub(crate) enum ProviderRequest {
         deadline: Instant,
         reply: SyncSender<Result<bool, String>>,
     },
+    Seek {
+        position_ms: u64,
+        target_id: String,
+        generation: u64,
+        deadline: Instant,
+        reply: SyncSender<Result<bool, String>>,
+    },
+    SelectSource {
+        source_id: Option<String>,
+        deadline: Instant,
+        reply: SyncSender<Result<bool, String>>,
+    },
     Refresh,
     Shutdown,
 }
@@ -117,6 +166,18 @@ pub(crate) enum HubMessage {
     Command {
         command: String,
         session_revision: u64,
+        deadline: Instant,
+        reply: SyncSender<Result<bool, String>>,
+    },
+    Seek {
+        position_ms: u64,
+        session_revision: u64,
+        deadline: Instant,
+        reply: SyncSender<Result<bool, String>>,
+    },
+    SelectSource {
+        provider_id: Option<String>,
+        source_id: Option<String>,
         deadline: Instant,
         reply: SyncSender<Result<bool, String>>,
     },

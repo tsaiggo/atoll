@@ -14,6 +14,36 @@ export function mediaCommandEnabled(command: MediaCommand, current: MediaStatus)
   return current.canPlayPause;
 }
 
+export function mediaSeekEnabled(current: MediaStatus): boolean {
+  const duration = current.durationMs;
+  return (
+    current.canSeek &&
+    duration !== undefined &&
+    Number.isFinite(duration) &&
+    duration >= 1_000
+  );
+}
+
+export function normalizeMediaSeekPosition(
+  current: MediaStatus,
+  positionMs: number,
+): number | null {
+  if (!mediaSeekEnabled(current) || !Number.isFinite(positionMs)) return null;
+  return Math.round(Math.min(current.durationMs!, Math.max(0, positionMs)));
+}
+
+export function optimisticMediaSeek(
+  current: MediaStatus,
+  positionMs: number,
+  now = Date.now(),
+): MediaStatus {
+  return {
+    ...current,
+    positionMs,
+    positionUpdatedAtMs: now,
+  };
+}
+
 export function optimisticPlaybackToggle(current: MediaStatus): MediaStatus {
   const now = Date.now();
   return {

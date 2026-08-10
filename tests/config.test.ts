@@ -124,6 +124,7 @@ test("cleans retired timer data and settings during upgrade", () => {
       timerBreaksFullscreen: true,
       idleMode: "hidden",
       compactTimeoutMs: 3200,
+      expandedTimeoutMs: 7000,
     }),
   );
 
@@ -139,4 +140,5 @@ test("cleans retired timer data and settings during upgrade", () => {
   assert.equal("timerBreaksFullscreen" in stored, false);
   assert.equal("idleMode" in stored, false);
   assert.equal("compactTimeoutMs" in stored, false);
+  assert.equal("expandedTimeoutMs" in stored, false);
 });

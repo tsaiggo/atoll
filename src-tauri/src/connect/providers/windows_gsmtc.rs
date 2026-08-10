@@ -1,5 +1,6 @@
 use std::{
     cmp::Reverse,
+    collections::BTreeMap,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
@@ -25,7 +26,7 @@ use windows_future::{AsyncOperationCompletedHandler, AsyncStatus};
 use super::super::{
     contract::{
         MediaAction, MediaConnectState, MediaConnectStatus, MediaSnapshot, ProviderDescriptor,
-        ProviderRequest, ProviderState,
+        ProviderRequest, ProviderSource, ProviderState,
     },
     provider::{ConnectProvider, ProviderEventSink, ProviderMailbox},
 };
@@ -146,6 +147,7 @@ impl Drop for WinRtApartment {
 
 struct Candidate {
     session: GlobalSystemMediaTransportControlsSession,
+    source_id: String,
     playing: bool,
     current: bool,
     previous: bool,
@@ -276,6 +278,7 @@ fn run_worker(
     let mut selected_session: Option<GlobalSystemMediaTransportControlsSession> = None;
     let mut selected_subscription: Option<SessionSubscription> = None;
     let mut selected_target_id: Option<String> = None;
+    let mut manual_source_id: Option<String> = None;
     let mut selected_revision = 0_u64;
     let mut last_snapshot: Option<MediaSnapshot> = None;
     let mut cache = ArtworkCache::default();
@@ -298,6 +301,7 @@ fn run_worker(
                     selected_session = None;
                     selected_subscription = None;
                     selected_target_id = None;
+                    manual_source_id = None;
                     last_snapshot = None;
                     if !publish_provider_state(
                         &events,
@@ -305,7 +309,9 @@ fn run_worker(
                             status: MediaConnectStatus::Unavailable,
                             session_count: 0,
                             media: None,
+                            ..MediaConnectState::default()
                         },
+                        Vec::new(),
                         None,
                         selected_revision,
                     ) {
@@ -320,9 +326,17 @@ fn run_worker(
                 active_manager,
                 selected_session.as_ref(),
                 last_snapshot.as_ref(),
+                manual_source_id.as_deref(),
                 &mut cache,
             ) {
-                Ok((mut state, next_session)) => {
+                Ok((mut state, sources, next_session)) => {
+                    if manual_source_id.as_ref().is_some_and(|manual_source_id| {
+                        !sources
+                            .iter()
+                            .any(|source| source.source_id == *manual_source_id)
+                    }) {
+                        manual_source_id = None;
+                    }
                     let selection_changed = match (&selected_session, &next_session) {
                         (Some(previous), Some(next)) => previous != next,
                         (None, None) => false,
@@ -362,6 +376,7 @@ fn run_worker(
                     if !publish_provider_state(
                         &events,
                         state,
+                        sources,
                         selected_target_id.clone(),
                         selected_revision,
                     ) {
@@ -378,6 +393,7 @@ fn run_worker(
                     selected_session = None;
                     selected_subscription = None;
                     selected_target_id = None;
+                    manual_source_id = None;
                     last_snapshot = None;
                     cache = ArtworkCache::default();
                     if !publish_provider_state(
@@ -386,7 +402,9 @@ fn run_worker(
                             status: MediaConnectStatus::Unavailable,
                             session_count: 0,
                             media: None,
+                            ..MediaConnectState::default()
                         },
+                        Vec::new(),
                         None,
                         selected_revision,
                     ) {
@@ -415,6 +433,37 @@ fn run_worker(
                 };
                 let _ = reply.send(result);
             }
+            Ok(ProviderRequest::Seek {
+                position_ms,
+                target_id,
+                generation,
+                deadline,
+                reply,
+            }) => {
+                let result = if Instant::now() >= deadline {
+                    Err("The media seek expired before it could run".to_string())
+                } else if generation != selected_revision
+                    || selected_target_id.as_deref() != Some(target_id.as_str())
+                {
+                    Err("The selected media session changed".to_string())
+                } else {
+                    execute_seek(selected_session.as_ref(), position_ms, deadline)
+                };
+                let _ = reply.send(result);
+            }
+            Ok(ProviderRequest::SelectSource {
+                source_id,
+                deadline,
+                reply,
+            }) => {
+                let result = if Instant::now() >= deadline {
+                    Err("The media source selection expired before it could run".to_string())
+                } else {
+                    manual_source_id = source_id;
+                    Ok(true)
+                };
+                let _ = reply.send(result);
+            }
             Ok(ProviderRequest::Refresh) => notifier.mark_handled(),
             Ok(ProviderRequest::Shutdown) => break,
             Err(RecvTimeoutError::Timeout) => {}
@@ -433,13 +482,16 @@ fn session_target_id(session: &GlobalSystemMediaTransportControlsSession) -> Str
 fn publish_provider_state(
     events: &ProviderEventSink,
     state: MediaConnectState,
+    sources: Vec<ProviderSource>,
     target_id: Option<String>,
     generation: u64,
 ) -> bool {
     events.publish(ProviderState {
         status: state.status,
         target_count: state.session_count,
+        active_source: target_id.clone(),
         target_id,
+        sources,
         generation,
         media: state.media,
     })
@@ -449,9 +501,11 @@ fn capture_connect_state(
     manager: &GlobalSystemMediaTransportControlsSessionManager,
     previous_session: Option<&GlobalSystemMediaTransportControlsSession>,
     previous_snapshot: Option<&MediaSnapshot>,
+    preferred_source_id: Option<&str>,
     cache: &mut ArtworkCache,
 ) -> windows::core::Result<(
     MediaConnectState,
+    Vec<ProviderSource>,
     Option<GlobalSystemMediaTransportControlsSession>,
 )> {
     let sessions = manager.GetSessions()?;
@@ -469,6 +523,7 @@ fn capture_connect_state(
             continue;
         }
         candidates.push(Candidate {
+            source_id: session_target_id(&session),
             playing: playback_status
                 == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing),
             current: current_session
@@ -482,6 +537,7 @@ fn capture_connect_state(
 
     candidates.sort_by_key(|candidate| {
         Reverse(candidate_rank(
+            preferred_source_id.is_some_and(|source_id| candidate.source_id == source_id),
             candidate.playing,
             candidate.current,
             candidate.previous,
@@ -490,7 +546,24 @@ fn capture_connect_state(
     });
 
     let session_count = candidates.len() as u32;
-    for candidate in &candidates {
+    let sources = collect_sources(&candidates);
+    let preferred_source_is_available = preferred_source_id.is_some_and(|source_id| {
+        candidates
+            .iter()
+            .any(|candidate| candidate.source_id == source_id)
+    });
+    let candidates_to_read = if preferred_source_is_available {
+        candidates
+            .iter()
+            .filter(|candidate| {
+                preferred_source_id.is_some_and(|source_id| candidate.source_id == source_id)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        candidates.iter().collect::<Vec<_>>()
+    };
+
+    for candidate in &candidates_to_read {
         match snapshot_from_session(&candidate.session, cache) {
             Ok(Some(snapshot)) => {
                 return Ok((
@@ -498,7 +571,9 @@ fn capture_connect_state(
                         status: MediaConnectStatus::Ready,
                         session_count,
                         media: Some(snapshot),
+                        ..MediaConnectState::default()
                     },
+                    sources,
                     Some(candidate.session.clone()),
                 ));
             }
@@ -511,7 +586,7 @@ fn capture_connect_state(
 
     if let (Some(previous_session), Some(previous_snapshot)) = (previous_session, previous_snapshot)
     {
-        if candidates
+        if candidates_to_read
             .iter()
             .any(|candidate| candidate.session == *previous_session)
         {
@@ -520,7 +595,9 @@ fn capture_connect_state(
                     status: MediaConnectStatus::Ready,
                     session_count,
                     media: Some(previous_snapshot.clone()),
+                    ..MediaConnectState::default()
                 },
+                sources,
                 Some(previous_session.clone()),
             ));
         }
@@ -532,23 +609,48 @@ fn capture_connect_state(
     } else {
         MediaConnectStatus::MetadataUnavailable
     };
+    let selected_session = preferred_source_is_available
+        .then(|| {
+            candidates_to_read
+                .first()
+                .map(|candidate| candidate.session.clone())
+        })
+        .flatten();
     Ok((
         MediaConnectState {
             status,
             session_count,
             media: None,
+            ..MediaConnectState::default()
         },
-        None,
+        sources,
+        selected_session,
     ))
 }
 
 fn candidate_rank(
+    preferred_source: bool,
     playing: bool,
     current: bool,
     previous: bool,
     index: u32,
-) -> (bool, bool, bool, Reverse<u32>) {
-    (playing, current, previous, Reverse(index))
+) -> (bool, bool, bool, bool, Reverse<u32>) {
+    (preferred_source, playing, current, previous, Reverse(index))
+}
+
+fn collect_sources(candidates: &[Candidate]) -> Vec<ProviderSource> {
+    let mut sources = BTreeMap::<String, ProviderSource>::new();
+    for candidate in candidates {
+        let source = sources
+            .entry(candidate.source_id.clone())
+            .or_insert_with(|| ProviderSource {
+                source_id: candidate.source_id.clone(),
+                label: friendly_source(&candidate.source_id),
+                session_count: 0,
+            });
+        source.session_count = source.session_count.saturating_add(1);
+    }
+    sources.into_values().collect()
 }
 
 fn advance_revision(current: u64) -> u64 {
@@ -710,11 +812,79 @@ fn execute_command(
         }
     }
     .map_err(|error| error.to_string())?;
+
+    wait_for_operation(
+        operation,
+        deadline,
+        "The media command expired before it could run",
+        "The media player did not respond in time",
+        "The media command could not be completed",
+    )
+}
+
+fn execute_seek(
+    session: Option<&GlobalSystemMediaTransportControlsSession>,
+    position_ms: u64,
+    deadline: Instant,
+) -> Result<bool, String> {
+    if Instant::now() >= deadline {
+        return Err("The media seek expired before it could run".to_string());
+    }
+    let session = session.ok_or_else(|| "There is no selected media session".to_string())?;
+    let playback = session
+        .GetPlaybackInfo()
+        .map_err(|error| error.to_string())?;
+    let controls = playback.Controls().map_err(|error| error.to_string())?;
+    if !controls.IsPlaybackPositionEnabled().unwrap_or(false) {
+        return Err("The selected media session does not support seeking".to_string());
+    }
+    let timeline = session
+        .GetTimelineProperties()
+        .map_err(|error| error.to_string())?;
+    let start_ticks = timeline
+        .StartTime()
+        .map_err(|error| error.to_string())?
+        .Duration;
+    let requested_position = position_ms_to_timeline_ticks(start_ticks, position_ms)?;
+    let operation = session
+        .TryChangePlaybackPositionAsync(requested_position)
+        .map_err(|error| error.to_string())?;
+
+    wait_for_operation(
+        operation,
+        deadline,
+        "The media seek expired before it could run",
+        "The media player did not respond in time",
+        "The media seek could not be completed",
+    )
+}
+
+fn position_ms_to_ticks(position_ms: u64) -> Result<i64, String> {
+    let position_ms = i64::try_from(position_ms)
+        .map_err(|_| "The requested media position is invalid".to_string())?;
+    position_ms
+        .checked_mul(TICKS_PER_MILLISECOND)
+        .ok_or_else(|| "The requested media position is invalid".to_string())
+}
+
+fn position_ms_to_timeline_ticks(start_ticks: i64, position_ms: u64) -> Result<i64, String> {
+    start_ticks
+        .checked_add(position_ms_to_ticks(position_ms)?)
+        .ok_or_else(|| "The requested media position is invalid".to_string())
+}
+
+fn wait_for_operation(
+    operation: windows_future::IAsyncOperation<bool>,
+    deadline: Instant,
+    expired_message: &str,
+    timeout_message: &str,
+    disconnected_message: &str,
+) -> Result<bool, String> {
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() {
         let _ = operation.Cancel();
         let _ = operation.Close();
-        return Err("The media command expired before it could run".to_string());
+        return Err(expired_message.to_string());
     }
 
     if operation.Status().map_err(|error| error.to_string())? != AsyncStatus::Started {
@@ -740,11 +910,9 @@ fn execute_command(
         Err(RecvTimeoutError::Timeout) => {
             let _ = operation.Cancel();
             let _ = operation.Close();
-            Err("The media player did not respond in time".to_string())
+            Err(timeout_message.to_string())
         }
-        Err(RecvTimeoutError::Disconnected) => {
-            Err("The media command could not be completed".to_string())
-        }
+        Err(RecvTimeoutError::Disconnected) => Err(disconnected_message.to_string()),
     }
 }
 
@@ -907,17 +1075,34 @@ mod tests {
 
     #[test]
     fn playing_beats_current_and_previous() {
-        assert!(candidate_rank(true, false, false, 2) > candidate_rank(false, true, true, 0));
+        assert!(
+            candidate_rank(false, true, false, false, 2)
+                > candidate_rank(false, false, true, true, 0)
+        );
     }
 
     #[test]
     fn current_beats_previous_when_playback_matches() {
-        assert!(candidate_rank(true, true, false, 4) > candidate_rank(true, false, true, 0));
+        assert!(
+            candidate_rank(false, true, true, false, 4)
+                > candidate_rank(false, true, false, true, 0)
+        );
     }
 
     #[test]
     fn previous_beats_list_order_when_other_flags_match() {
-        assert!(candidate_rank(false, false, true, 5) > candidate_rank(false, false, false, 0));
+        assert!(
+            candidate_rank(false, false, false, true, 5)
+                > candidate_rank(false, false, false, false, 0)
+        );
+    }
+
+    #[test]
+    fn manually_selected_source_beats_a_playing_automatic_candidate() {
+        assert!(
+            candidate_rank(true, false, false, false, 2)
+                > candidate_rank(false, true, true, true, 0)
+        );
     }
 
     #[test]
@@ -947,6 +1132,18 @@ mod tests {
         );
         assert_eq!(normalize_timeline(100, 100, 100), None);
         assert_eq!(normalize_timeline(200, 100, 150), None);
+    }
+
+    #[test]
+    fn converts_seek_milliseconds_to_windows_ticks_without_overflow() {
+        assert_eq!(position_ms_to_ticks(90_000), Ok(900_000_000));
+        assert_eq!(
+            position_ms_to_timeline_ticks(500_000, 90_000),
+            Ok(900_500_000)
+        );
+        assert!(position_ms_to_ticks(u64::MAX).is_err());
+        assert!(position_ms_to_ticks((i64::MAX as u64) / 10_000 + 1).is_err());
+        assert!(position_ms_to_timeline_ticks(i64::MAX, 1).is_err());
     }
 
     #[test]

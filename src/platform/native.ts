@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { MediaCommand } from "../features/media/commands";
 import type { UiLanguage } from "../i18n";
 import type {
+  NativeEnergyPayload,
   NativeMediaUpdatePayload,
   NativeVolumePayload,
   ShellState,
@@ -31,6 +32,7 @@ export interface NativeShellSettledPayload {
 
 export interface NativeEventHandlers {
   onAction(action: string): void;
+  onEnergy(payload: NativeEnergyPayload): void;
   onMediaUpdate(payload: NativeMediaUpdatePayload): void;
   onVolume(payload: NativeVolumePayload): void;
   onFullscreenChanged(payload: { fullscreen: boolean }): void;
@@ -45,6 +47,10 @@ export function getFullscreen(): Promise<boolean> {
 
 export function getMediaStatus(): Promise<NativeMediaUpdatePayload> {
   return invoke<NativeMediaUpdatePayload>("media_status");
+}
+
+export function getEnergyStatus(): Promise<NativeEnergyPayload> {
+  return invoke<NativeEnergyPayload>("energy_status");
 }
 
 export function applyNativeShell(request: NativeShellRequest): Promise<void> {
@@ -75,9 +81,32 @@ export function runNativeMediaCommand(
   return invoke<boolean>("media_command", { command, sessionRevision });
 }
 
+export function runNativeMediaSeek(
+  positionMs: number,
+  sessionRevision: number,
+): Promise<boolean> {
+  return invoke<boolean>("media_seek", { positionMs, sessionRevision });
+}
+
+export function selectNativeMediaSource(
+  providerId?: string,
+  sourceId?: string,
+): Promise<boolean> {
+  return invoke<boolean>("media_select_source", { providerId, sourceId });
+}
+
+export function setNativeSystemVolume(level: number): Promise<boolean> {
+  return invoke<boolean>("set_system_volume", { level });
+}
+
+export function setNativeSystemMute(muted: boolean): Promise<boolean> {
+  return invoke<boolean>("set_system_mute", { muted });
+}
+
 export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<UnlistenFn[]> {
   return Promise.all([
     listen<string>("atoll-action", ({ payload }) => handlers.onAction(payload)),
+    listen<NativeEnergyPayload>("energy-update", ({ payload }) => handlers.onEnergy(payload)),
     listen<NativeMediaUpdatePayload>("media-update", ({ payload }) =>
       handlers.onMediaUpdate(payload),
     ),

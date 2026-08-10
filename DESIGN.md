@@ -70,10 +70,12 @@ The media cover is an anchor rather than decoration: 40 × 40 DIP in Compact and
 
 ## Expanded panels
 
-Expanded has exactly three contexts:
+Expanded has five focused contexts:
 
-- **Home:** Atoll identity, inline system volume, a settings affordance, and the current media summary.
-- **Media:** cover and two-line metadata, optional progress, previous/play-next transport, and source feedback.
+- **Home:** a compact Atoll identity row (system-volume control, hide, and settings affordances), then two vertically stacked widgets: current media and today's battery-discharge status. The media tile carries a restrained ink-indigo category veil; the lower status carries a quiet mineral-amber measurement veil. These colors identify content type, never a good/bad battery-health judgement. The lower status remains battery-only and visually quieter than the playable media tile; selecting it opens the focused history view.
+- **Energy history:** a single seven-day battery-discharge strip, with one selectable real record at a time and its exact value in the lower readout. Today is live; preceding dates come only from completed persisted records. Missing dates stay empty rather than being rendered as zero, and a dashed bar cap plus text identifies a partial record. Sampling never opens this panel automatically.
+- **Media:** cover and two-line metadata, optional progress, previous/play-next transport, and source feedback. When the current Windows media session explicitly supports seeking, the same two-pixel timeline becomes a direct click/drag control; otherwise it remains an unfocusable read-only meter.
+- **Sources:** a short radio list for choosing the Windows media source when more than one compatible player is available.
 - **Settings:** Chinese/English language selection and the fullscreen-hide switch. Settings remain deliberately short.
 
 Controls use authored outline icons, explicit accessible labels, visible keyboard focus, and tabular numerals for changing time or volume. A context menu remains available from secondary click.
@@ -82,7 +84,7 @@ Controls use authored outline icons, explicit accessible labels, visible keyboar
 
 - Reef opens to Expanded only on click; hover is visual feedback only.
 - A meaningful track change or system-volume update may open the relevant Expanded panel. Manual hide and fullscreen suppression take priority.
-- Expanded collapses after the configured idle interval (7 seconds by default). Pointer-down, mouse-wheel activity, keyboard activity, and in-panel actions refresh that interval. A pending media command also prevents a premature collapse.
+- Expanded collapses after the configured idle interval (4 seconds by default). Pointer-down, mouse-wheel activity, keyboard activity, and in-panel actions refresh that interval. A pending media command also prevents a premature collapse.
 - Clicking the non-action area of an expanded Island collapses it; Escape collapses it as well.
 - On collapse, ordinary idle content returns to Reef rather than leaving a shrunken media card on screen.
 

@@ -12,8 +12,8 @@ use std::{
 
 use super::{
     contract::{
-        HubMessage, MediaConnectState, MediaConnectStatus, ProviderDescriptor, ProviderRequest,
-        ProviderState,
+        HubMessage, ManualMediaSource, MediaConnectState, MediaConnectStatus, MediaSource,
+        ProviderDescriptor, ProviderRequest, ProviderState,
     },
     provider::{ConnectProvider, ProviderEventSink, ProviderMailbox},
 };
@@ -133,6 +133,7 @@ struct ConnectHub {
     providers: BTreeMap<&'static str, ProviderSlot>,
     publisher: Sender<MediaConnectState>,
     selection: Option<Selection>,
+    manual_source: Option<ManualMediaSource>,
     generation: u64,
     last_published: MediaConnectState,
     publisher_connected: bool,
@@ -147,6 +148,7 @@ impl ConnectHub {
             providers,
             publisher,
             selection: None,
+            manual_source: None,
             generation: 0,
             last_published: MediaConnectState::default(),
             publisher_connected: true,
@@ -172,6 +174,18 @@ impl ConnectHub {
                     deadline,
                     reply,
                 } => self.route_command(command, session_revision, deadline, reply),
+                HubMessage::Seek {
+                    position_ms,
+                    session_revision,
+                    deadline,
+                    reply,
+                } => self.route_seek(position_ms, session_revision, deadline, reply),
+                HubMessage::SelectSource {
+                    provider_id,
+                    source_id,
+                    deadline,
+                    reply,
+                } => self.route_source_selection(provider_id, source_id, deadline, reply),
                 HubMessage::Shutdown => break,
             }
         }
@@ -209,6 +223,18 @@ impl ConnectHub {
             );
             return;
         }
+        if state.active_source.as_ref().is_some_and(|active_source| {
+            !state
+                .sources
+                .iter()
+                .any(|source| source.source_id == *active_source)
+        }) {
+            log::warn!(
+                "Ignoring invalid active source from Atoll Connect provider {}",
+                provider_id
+            );
+            return;
+        }
         slot.last_sequence = sequence;
         slot.state = state;
         self.recompute();
@@ -227,12 +253,36 @@ impl ConnectHub {
     }
 
     fn recompute(&mut self) {
-        let best_provider = self
-            .providers
-            .values()
-            .filter(|slot| slot.state.media.is_some())
-            .max_by(|left, right| compare_candidates(left, right, self.selection.as_ref()))
-            .map(|slot| slot.descriptor.id);
+        self.clear_missing_manual_source();
+
+        let manual_source_state = self.manual_source.as_ref().and_then(|manual_source| {
+            self.providers
+                .values()
+                .find(|slot| slot.running && slot.descriptor.id == manual_source.provider_id)
+                .map(|slot| {
+                    (
+                        slot.descriptor.id,
+                        slot.state.active_source.as_deref()
+                            == Some(manual_source.source_id.as_str()),
+                        slot.state.media.is_some(),
+                        slot.state.status.clone(),
+                    )
+                })
+        });
+        let manually_selected_provider = manual_source_state.as_ref().and_then(
+            |(provider_id, source_is_active, has_media, _)| {
+                (*source_is_active && *has_media).then_some(*provider_id)
+            },
+        );
+        let automatically_selected_provider = self.manual_source.is_none().then(|| {
+            self.providers
+                .values()
+                .filter(|slot| slot.state.media.is_some())
+                .max_by(|left, right| compare_candidates(left, right, self.selection.as_ref()))
+                .map(|slot| slot.descriptor.id)
+        });
+        let best_provider =
+            manually_selected_provider.or(automatically_selected_provider.flatten());
 
         let next_selection = best_provider.map(|provider_id| {
             let state = &self
@@ -268,15 +318,58 @@ impl ConnectHub {
         });
         let status = if media.is_some() {
             MediaConnectStatus::Ready
+        } else if let Some((_, source_is_active, _, provider_status)) = manual_source_state {
+            if source_is_active {
+                provider_status
+            } else {
+                MediaConnectStatus::Checking
+            }
         } else {
             aggregate_status(self.providers.values().map(|slot| &slot.state.status))
         };
+        let mut sources = self
+            .providers
+            .values()
+            .flat_map(|slot| {
+                slot.state.sources.iter().map(move |source| MediaSource {
+                    provider_id: slot.descriptor.id.to_string(),
+                    source_id: source.source_id.clone(),
+                    label: source.label.clone(),
+                    session_count: source.session_count,
+                })
+            })
+            .collect::<Vec<_>>();
+        sources.sort_by(|left, right| {
+            left.label
+                .cmp(&right.label)
+                .then_with(|| left.provider_id.cmp(&right.provider_id))
+                .then_with(|| left.source_id.cmp(&right.source_id))
+        });
 
         self.publish(MediaConnectState {
             status,
             session_count,
+            sources,
+            manual_source: self.manual_source.clone(),
             media,
         });
+    }
+
+    fn clear_missing_manual_source(&mut self) {
+        let available = self.manual_source.as_ref().is_none_or(|manual_source| {
+            self.providers.values().any(|slot| {
+                slot.running
+                    && slot.descriptor.id == manual_source.provider_id
+                    && slot
+                        .state
+                        .sources
+                        .iter()
+                        .any(|source| source.source_id == manual_source.source_id)
+            })
+        });
+        if !available {
+            self.manual_source = None;
+        }
     }
 
     fn publish(&mut self, state: MediaConnectState) {
@@ -300,6 +393,15 @@ impl ConnectHub {
             let _ = reply.send(Err(
                 "The media command expired before it could run".to_string()
             ));
+            return;
+        }
+        if self.manual_source.as_ref().is_some_and(|manual_source| {
+            self.selection.as_ref().is_none_or(|selection| {
+                selection.provider_id != manual_source.provider_id
+                    || selection.target_id != manual_source.source_id
+            })
+        }) {
+            let _ = reply.send(Err("The selected media source is changing".to_string()));
             return;
         }
         if session_revision != self.generation {
@@ -336,6 +438,196 @@ impl ConnectHub {
             let _ = failure_reply.send(Err("The media worker is unavailable".to_string()));
         }
     }
+
+    fn route_seek(
+        &self,
+        position_ms: u64,
+        session_revision: u64,
+        deadline: Instant,
+        reply: std::sync::mpsc::SyncSender<Result<bool, String>>,
+    ) {
+        if Instant::now() >= deadline {
+            let _ = reply.send(Err("The media seek expired before it could run".to_string()));
+            return;
+        }
+        if self.manual_source.as_ref().is_some_and(|manual_source| {
+            self.selection.as_ref().is_none_or(|selection| {
+                selection.provider_id != manual_source.provider_id
+                    || selection.target_id != manual_source.source_id
+            })
+        }) {
+            let _ = reply.send(Err("The selected media source is changing".to_string()));
+            return;
+        }
+        if session_revision != self.generation {
+            let _ = reply.send(Err("The selected media session changed".to_string()));
+            return;
+        }
+        let Some(selection) = self.selection.as_ref() else {
+            let _ = reply.send(Err("There is no selected media session".to_string()));
+            return;
+        };
+        let Some(slot) = self.providers.get(selection.provider_id) else {
+            let _ = reply.send(Err("The media provider is unavailable".to_string()));
+            return;
+        };
+        let Some(media) = slot.state.media.as_ref() else {
+            let _ = reply.send(Err("There is no selected media session".to_string()));
+            return;
+        };
+        if !media.can_seek {
+            let _ = reply.send(Err(
+                "The selected media session does not support seeking".to_string()
+            ));
+            return;
+        }
+        if media
+            .duration_ms
+            .is_some_and(|duration_ms| position_ms > duration_ms)
+        {
+            let _ = reply.send(Err(
+                "The requested media position is outside the selected timeline".to_string(),
+            ));
+            return;
+        }
+
+        let failure_reply = reply.clone();
+        if slot
+            .requests
+            .send(ProviderRequest::Seek {
+                position_ms,
+                target_id: selection.target_id.clone(),
+                generation: selection.provider_generation,
+                deadline,
+                reply,
+            })
+            .is_err()
+        {
+            let _ = failure_reply.send(Err("The media worker is unavailable".to_string()));
+        }
+    }
+
+    fn route_source_selection(
+        &mut self,
+        provider_id: Option<String>,
+        source_id: Option<String>,
+        deadline: Instant,
+        reply: std::sync::mpsc::SyncSender<Result<bool, String>>,
+    ) {
+        if Instant::now() >= deadline {
+            let _ = reply.send(Err(
+                "The media source selection expired before it could run".to_string(),
+            ));
+            return;
+        }
+
+        match (provider_id, source_id) {
+            (None, None) => {
+                let reset_sender = self.manual_source.as_ref().and_then(|manual_source| {
+                    self.providers
+                        .values()
+                        .find(|slot| {
+                            slot.running && slot.descriptor.id == manual_source.provider_id
+                        })
+                        .map(|slot| slot.requests.clone())
+                });
+                self.manual_source = None;
+                self.recompute();
+
+                if let Some(requests) = reset_sender {
+                    // The hub has already safely returned to automatic selection. A
+                    // stopped worker cannot make that state unsafe, but an available
+                    // worker still receives the reset so its local preference agrees.
+                    let _ = request_source_selection(&requests, None, deadline);
+                    let _ = reply.send(Ok(true));
+                } else {
+                    let _ = reply.send(Ok(true));
+                }
+            }
+            (Some(provider_id), Some(source_id)) => {
+                let selection = ManualMediaSource {
+                    provider_id,
+                    source_id,
+                };
+                let requests = match self
+                    .providers
+                    .values()
+                    .find(|slot| slot.running && slot.descriptor.id == selection.provider_id)
+                {
+                    Some(slot)
+                        if slot
+                            .state
+                            .sources
+                            .iter()
+                            .any(|source| source.source_id == selection.source_id) =>
+                    {
+                        slot.requests.clone()
+                    }
+                    Some(_) => {
+                        let _ =
+                            reply.send(Err("The selected media source is unavailable".to_string()));
+                        return;
+                    }
+                    None => {
+                        let _ = reply
+                            .send(Err("The selected media provider is unavailable".to_string()));
+                        return;
+                    }
+                };
+
+                match request_source_selection(
+                    &requests,
+                    Some(selection.source_id.clone()),
+                    deadline,
+                ) {
+                    Ok(true) => {
+                        self.manual_source = Some(selection);
+                        self.recompute();
+                        let _ = reply.send(Ok(true));
+                    }
+                    Ok(false) => {
+                        let _ = reply.send(Ok(false));
+                    }
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                    }
+                }
+            }
+            _ => {
+                let _ = reply.send(Err(
+                    "A media provider and source must be selected together".to_string()
+                ));
+            }
+        }
+    }
+}
+
+fn request_source_selection(
+    requests: &Sender<ProviderRequest>,
+    source_id: Option<String>,
+    deadline: Instant,
+) -> Result<bool, String> {
+    if Instant::now() >= deadline {
+        return Err("The media source selection expired before it could run".to_string());
+    }
+    let (reply_sender, reply_receiver) = mpsc::sync_channel(1);
+    requests
+        .send(ProviderRequest::SelectSource {
+            source_id,
+            deadline,
+            reply: reply_sender,
+        })
+        .map_err(|_| "The media worker is unavailable".to_string())?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err("The media source selection expired before it could run".to_string());
+    }
+    reply_receiver
+        .recv_timeout(remaining)
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => "The media source did not respond".to_string(),
+            mpsc::RecvTimeoutError::Disconnected => "The media worker is unavailable".to_string(),
+        })?
 }
 
 fn compare_candidates(

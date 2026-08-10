@@ -47,7 +47,7 @@ connect/
   runtime.rs     Tauri managed state 与同步命令入口
   providers/
     windows_gsmtc.rs  内置 Windows GSMTC Provider
-volume.rs        Windows Core Audio 音量监听
+volume.rs        Windows Core Audio 音量监听与默认输出设备控制
 fullscreen.rs    前台全屏窗口检测
 ```
 
@@ -66,7 +66,7 @@ publisher / runtime
   -> contract / Tauri
 ```
 
-Provider 只观察一个来源、发布结构化状态并执行强类型 action。它不能直接访问 Tauri managed state、发送 `media-update` 或决定公开的 `session_revision`。Connect Hub 是唯一的来源选择与命令路由者；Publisher 是唯一的前端媒体事件发布者。
+Provider 只观察一个来源、发布结构化状态并执行强类型 action。它不能直接访问 Tauri managed state、发送 `media-update` 或决定公开的 `session_revision`。Connect Hub 是唯一的来源选择与命令路由者：它同时维护仅当前运行有效的“按应用来源”选择，并在来源消失时清除选择、恢复自动策略；Publisher 是唯一的前端媒体事件发布者。
 
 ## 依赖规则
 
@@ -106,6 +106,10 @@ domain
 | `set_window_shell` | `NativeShellRequest` | `void` |
 | `show_context_menu` | 无 | `void` |
 | `media_command` | `command`, `sessionRevision` | `boolean` |
+| `media_seek` | `positionMs`, `sessionRevision` | `boolean` |
+| `media_select_source` | 可选的 `providerId`, `sourceId`；两者均省略表示自动 | `boolean` |
+| `set_system_volume` | `level`（0–1） | `boolean` |
+| `set_system_mute` | `muted` | `boolean` |
 
 事件由 Rust 发往前端：
 

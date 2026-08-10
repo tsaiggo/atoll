@@ -30,6 +30,7 @@ export interface AppCopy {
     readonly playerConnected: (count: number) => string;
     readonly supportedPlayers: string;
     readonly progress: string;
+    readonly seek: string;
     readonly progressValue: (elapsed: string, duration: string) => string;
     readonly coverAlt: (title: string) => string;
     readonly noMedia: string;
@@ -47,6 +48,7 @@ export interface AppCopy {
     readonly pendingPause: string;
     readonly pendingPlay: string;
     readonly controlUnavailable: string;
+    readonly seekUnavailable: string;
     readonly accessibleStatus: (
       title: string,
       artist: string | null,
@@ -56,12 +58,39 @@ export interface AppCopy {
     readonly playing: string;
     readonly paused: string;
     readonly waiting: string;
+    readonly sourceTitle: string;
+    readonly sourceAutomatic: string;
+    readonly sourcePinned: string;
+    readonly chooseSource: string;
+    readonly backToControls: string;
+    readonly sourceChangeUnavailable: string;
   };
   readonly volume: {
     readonly title: string;
     readonly muted: string;
+    readonly controls: string;
+    readonly mute: string;
+    readonly unmute: string;
     readonly percent: (value: number) => string;
     readonly accessibleValue: (value: number, muted: boolean) => string;
+  };
+  readonly energy: {
+    readonly todayBatteryDischarge: (value: string, unit: string) => string;
+    readonly todayBatteryDischargeTitle: string;
+    readonly capacityUnavailable: string;
+    readonly batteryDischargeOnly: string;
+    readonly partialRecord: string;
+    readonly trackingSince: (time: string) => string;
+    readonly openHistory: string;
+    readonly historyTitle: string;
+    readonly historySubtitle: string;
+    readonly historyToday: string;
+    readonly historyNoRecord: string;
+    readonly historyUnavailableDetail: string;
+    readonly historyFirstDayDetail: string;
+    readonly historyPartialLegend: string;
+    readonly historyEntry: (date: string, value: string, unit: string, partial: boolean) => string;
+    readonly historyMissingEntry: (date: string) => string;
   };
   readonly settings: {
     readonly title: string;
@@ -103,6 +132,7 @@ const EN: AppCopy = {
       count === 1 ? "1 player connected" : `${count} players connected`,
     supportedPlayers: "QQ Music · Spotify · browsers",
     progress: "Playback progress",
+    seek: "Seek playback",
     progressValue: (elapsed, duration) => `${elapsed} of ${duration}`,
     coverAlt: (title) => `Album artwork for ${title}`,
     noMedia: "No media",
@@ -120,18 +150,47 @@ const EN: AppCopy = {
     pendingPause: "Pausing…",
     pendingPlay: "Playing…",
     controlUnavailable: "Control unavailable",
+    seekUnavailable: "Seeking isn’t available",
     accessibleStatus: (title, artist, playback, expand) =>
       `${title}${artist ? ` by ${artist}` : ""}, ${playback}. ${expand}`,
     playing: "playing",
     paused: "paused",
     waiting: "waiting for a session",
+    sourceTitle: "Playback source",
+    sourceAutomatic: "Automatic",
+    sourcePinned: "Pinned",
+    chooseSource: "Choose playback source",
+    backToControls: "Back to media controls",
+    sourceChangeUnavailable: "Couldn’t change playback source",
   },
   volume: {
     title: "Volume",
     muted: "Muted",
+    controls: "System volume controls",
+    mute: "Mute system volume",
+    unmute: "Unmute system volume",
     percent: (value) => `${value} percent`,
     accessibleValue: (value, muted) =>
       muted ? `Muted, ${value} percent` : `${value} percent`,
+  },
+  energy: {
+    todayBatteryDischarge: (value, unit) => `Today's battery discharge: ${value} ${unit}`,
+    todayBatteryDischargeTitle: "Today's battery discharge",
+    capacityUnavailable: "Battery capacity unavailable",
+    batteryDischargeOnly: "Battery discharge only",
+    partialRecord: "Partial record",
+    trackingSince: (time) => `since ${time}`,
+    openHistory: "View the last 7 days",
+    historyTitle: "Battery discharge",
+    historySubtitle: "Last 7 days",
+    historyToday: "Today so far",
+    historyNoRecord: "No record",
+    historyUnavailableDetail: "Windows is not reporting battery capacity right now.",
+    historyFirstDayDetail: "Completed days will appear here as Atoll records them.",
+    historyPartialLegend: "Dashed cap = partial record",
+    historyEntry: (date, value, unit, partial) =>
+      `${date}: ${value} ${unit}${partial ? ", partial record" : ""}`,
+    historyMissingEntry: (date) => `${date}: no record`,
   },
   settings: {
     title: "Settings",
@@ -172,6 +231,7 @@ const ZH_CN: AppCopy = {
     playerConnected: (count) => `已连接 ${count} 个播放器`,
     supportedPlayers: "QQ 音乐 · Spotify · 浏览器",
     progress: "播放进度",
+    seek: "调整播放进度",
     progressValue: (elapsed, duration) => `${elapsed} / ${duration}`,
     coverAlt: (title) => `《${title}》的专辑封面`,
     noMedia: "没有媒体",
@@ -189,18 +249,47 @@ const ZH_CN: AppCopy = {
     pendingPause: "正在暂停…",
     pendingPlay: "正在播放…",
     controlUnavailable: "当前控制不可用",
+    seekUnavailable: "当前播放器不支持定位",
     accessibleStatus: (title, artist, playback, expand) =>
       `${title}${artist ? `，${artist}` : ""}，${playback}。${expand}`,
     playing: "正在播放",
     paused: "已暂停",
     waiting: "正在等待播放器",
+    sourceTitle: "播放来源",
+    sourceAutomatic: "自动",
+    sourcePinned: "已固定",
+    chooseSource: "选择播放来源",
+    backToControls: "返回媒体控制",
+    sourceChangeUnavailable: "无法切换播放来源",
   },
   volume: {
     title: "音量",
     muted: "已静音",
+    controls: "系统音量控制",
+    mute: "静音系统音量",
+    unmute: "恢复系统音量",
     percent: (value) => `${value}%`,
     accessibleValue: (value, muted) =>
       muted ? `已静音，音量 ${value}%` : `音量 ${value}%`,
+  },
+  energy: {
+    todayBatteryDischarge: (value, unit) => `今日电池放电：${value} ${unit}`,
+    todayBatteryDischargeTitle: "今日电池放电",
+    capacityUnavailable: "电池容量不可用",
+    batteryDischargeOnly: "仅电池放电",
+    partialRecord: "部分记录",
+    trackingSince: (time) => `自 ${time} 开始记录`,
+    openHistory: "查看近 7 天",
+    historyTitle: "电池放电",
+    historySubtitle: "近 7 天",
+    historyToday: "今日累计",
+    historyNoRecord: "暂无记录",
+    historyUnavailableDetail: "Windows 当前未提供电池容量。",
+    historyFirstDayDetail: "Atoll 记录到完整日期后会显示在这里。",
+    historyPartialLegend: "虚线顶端表示部分记录",
+    historyEntry: (date, value, unit, partial) =>
+      `${date}：${value} ${unit}${partial ? "，部分记录" : ""}`,
+    historyMissingEntry: (date) => `${date}：暂无记录`,
   },
   settings: {
     title: "设置",

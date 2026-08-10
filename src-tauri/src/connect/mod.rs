@@ -37,6 +37,30 @@ pub(crate) async fn media_command(
 }
 
 #[tauri::command]
+pub(crate) async fn media_seek(
+    position_ms: u64,
+    session_revision: u64,
+    runtime: State<'_, ConnectRuntime>,
+) -> Result<bool, String> {
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || runtime.seek(position_ms, session_revision))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub(crate) async fn media_select_source(
+    provider_id: Option<String>,
+    source_id: Option<String>,
+    runtime: State<'_, ConnectRuntime>,
+) -> Result<bool, String> {
+    let runtime = runtime.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || runtime.select_source(provider_id, source_id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub(crate) fn media_status(runtime: State<'_, ConnectRuntime>) -> MediaConnectState {
     runtime.current_state()
 }
