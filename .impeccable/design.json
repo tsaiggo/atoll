@@ -1,231 +1,313 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-07-30T18:56:42.2019588+08:00",
+  "generatedAt": "2026-09-08T07:51:49.232Z",
   "title": "Design System: Atoll",
   "extensions": {
     "colorMeta": {
-      "reef-black": {
+      "shell-black": {
         "role": "neutral",
-        "displayName": "Reef Black",
-        "canonical": "#0b0d10",
-        "tonalRamp": ["#08090b", "#0b0d10", "#15181d", "#252a31", "#444c57", "#747e8b", "#b8c0c9", "#f5f7fa"]
+        "displayName": "Shell Black",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
       },
-      "raised-basin": {
+      "reading-white": {
         "role": "neutral",
-        "displayName": "Raised Basin",
-        "canonical": "#15181d",
-        "tonalRamp": ["#090b0d", "#101216", "#15181d", "#252a31", "#48505b", "#7b8591", "#bdc4cc", "#f4f6f8"]
+        "displayName": "Reading White",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
       },
-      "soft-basin": {
+      "ring-track": {
         "role": "neutral",
-        "displayName": "Soft Basin",
-        "canonical": "#1b1f25",
-        "tonalRamp": ["#0a0c0f", "#13161a", "#1b1f25", "#2c323a", "#505965", "#838d99", "#c1c7ce", "#f5f7f9"]
+        "displayName": "Ring Track",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
       },
-      "foam-white": {
+      "usage-track": {
         "role": "neutral",
-        "displayName": "Foam White",
-        "canonical": "#f5f7fa",
-        "tonalRamp": ["#17191c", "#30343a", "#555b64", "#7e8792", "#aab2bd", "#cdd2d9", "#e7eaee", "#f5f7fa"]
+        "displayName": "Usage Track",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
       },
-      "mist-text": {
+      "secondary-text": {
         "role": "neutral",
-        "displayName": "Mist Text",
-        "canonical": "#abb4c0",
-        "tonalRamp": ["#15191d", "#2d343b", "#4c5863", "#697784", "#8795a2", "#abb4c0", "#d0d5db", "#f2f4f6"]
+        "displayName": "Secondary Text",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
       },
-      "quiet-slate": {
+      "quiet-text": {
         "role": "neutral",
-        "displayName": "Quiet Slate",
-        "canonical": "#78828e",
-        "tonalRamp": ["#121619", "#283039", "#414c57", "#5d6975", "#78828e", "#9da5ae", "#c7ccd1", "#f0f2f4"]
+        "displayName": "Quiet Text",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
       },
-      "tide-mint": {
+      "control-surface": {
+        "role": "neutral",
+        "displayName": "Control Surface",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
+      },
+      "control-hover": {
+        "role": "neutral",
+        "displayName": "Control Hover",
+        "tonalRamp": [
+          "#000000",
+          "#1C1C1C",
+          "#2C2C2C",
+          "#303030",
+          "#777777",
+          "#999999",
+          "#B3B3B3",
+          "#FFFFFF"
+        ]
+      },
+      "usage-green": {
         "role": "primary",
-        "displayName": "Tide Mint",
-        "canonical": "#65d6c5",
-        "tonalRamp": ["#06251f", "#0b4036", "#146052", "#258777", "#43ad9c", "#65d6c5", "#abe9df", "#ebfaf7"]
+        "displayName": "Usage Green",
+        "tonalRamp": [
+          "oklch(15% 0.18 156)",
+          "oklch(26% 0.18 156)",
+          "oklch(38% 0.18 156)",
+          "oklch(49% 0.18 156)",
+          "oklch(61% 0.18 156)",
+          "oklch(72% 0.18 156)",
+          "oklch(84% 0.18 156)",
+          "oklch(95% 0.18 156)"
+        ]
       },
-      "tide-mint-bright": {
+      "usage-yellow": {
         "role": "primary",
-        "displayName": "Bright Tide Mint",
-        "canonical": "#81e3d4",
-        "tonalRamp": ["#082721", "#0d443a", "#176559", "#2b8e7e", "#51b9a9", "#81e3d4", "#bcefe7", "#eefbf9"]
+        "displayName": "Usage Yellow",
+        "tonalRamp": [
+          "oklch(15% 0.18 111)",
+          "oklch(26% 0.18 111)",
+          "oklch(38% 0.18 111)",
+          "oklch(49% 0.18 111)",
+          "oklch(61% 0.18 111)",
+          "oklch(72% 0.18 111)",
+          "oklch(84% 0.18 111)",
+          "oklch(95% 0.18 111)"
+        ]
       },
-      "tide-ink": {
-        "role": "neutral",
-        "displayName": "Tide Ink",
-        "canonical": "#071511",
-        "tonalRamp": ["#040b09", "#071511", "#112c25", "#255247", "#487a6e", "#7fa69d", "#bfd2cd", "#f0f7f5"]
-      },
-      "edge-catchlight": {
-        "role": "neutral",
-        "displayName": "Edge Catchlight",
-        "canonical": "rgba(255, 255, 255, 0.11)",
-        "tonalRamp": ["rgba(255,255,255,0.03)", "rgba(255,255,255,0.05)", "rgba(255,255,255,0.08)", "rgba(255,255,255,0.11)", "rgba(255,255,255,0.18)", "rgba(255,255,255,0.32)", "rgba(255,255,255,0.58)", "rgba(255,255,255,0.9)"]
-      },
-      "meter-track": {
-        "role": "neutral",
-        "displayName": "Meter Track",
-        "canonical": "#353b43",
-        "tonalRamp": ["#0d0f12", "#1b1f24", "#292e35", "#353b43", "#56606c", "#818b96", "#bdc3ca", "#f2f4f6"]
-      },
-      "switch-track": {
-        "role": "neutral",
-        "displayName": "Switch Track",
-        "canonical": "#353b44",
-        "tonalRamp": ["#0d0f12", "#1b1f24", "#292e35", "#353b44", "#56606d", "#818b97", "#bdc3ca", "#f2f4f6"]
-      },
-      "switch-thumb": {
-        "role": "neutral",
-        "displayName": "Switch Thumb",
-        "canonical": "#d8dde4",
-        "tonalRamp": ["#181b1f", "#333840", "#565e68", "#7f8995", "#a9b2bd", "#d8dde4", "#ebedf1", "#f8f9fa"]
+      "usage-orange": {
+        "role": "primary",
+        "displayName": "Usage Orange",
+        "tonalRamp": [
+          "oklch(15% 0.18 34)",
+          "oklch(26% 0.18 34)",
+          "oklch(38% 0.18 34)",
+          "oklch(49% 0.18 34)",
+          "oklch(61% 0.18 34)",
+          "oklch(72% 0.18 34)",
+          "oklch(84% 0.18 34)",
+          "oklch(95% 0.18 34)"
+        ]
       }
     },
     "typographyMeta": {
       "title": {
-        "displayName": "Panel Title",
-        "purpose": "Product, settings, and state headings."
-      },
-      "body": {
-        "displayName": "Status Body",
-        "purpose": "Compact primary copy, media titles, and controls."
+        "displayName": "Compact title",
+        "purpose": "Focused media and recovery headings."
       },
       "label": {
-        "displayName": "Quiet Label",
-        "purpose": "Metadata, sources, status descriptions, and hints."
+        "displayName": "Ring reading",
+        "purpose": "Peripheral measured status labels."
       },
-      "control": {
-        "displayName": "Control Label",
-        "purpose": "Section labels and compact control copy."
+      "caption": {
+        "displayName": "Supporting copy",
+        "purpose": "Media metadata and recovery instructions."
       },
-      "value": {
-        "displayName": "Small Value",
-        "purpose": "Percentages and secondary changing values."
-      },
-      "tiny": {
-        "displayName": "Microcopy",
-        "purpose": "Settings explanations in the fixed-height panel."
+      "usage-row": {
+        "displayName": "Usage row",
+        "purpose": "Repeated Codex window and reset rows; not a general minimum text size."
       }
     },
-    "shadows": [
-      {
-        "name": "ambient-shell",
-        "value": "0 12px 34px rgba(0, 0, 0, 0.42)",
-        "purpose": "Quiet separation between Atoll and the application below."
-      },
-      {
-        "name": "top-catchlight",
-        "value": "inset 0 1px rgba(255, 255, 255, 0.08)",
-        "purpose": "A restrained material edge on the outer shell."
-      }
-    ],
+    "shadows": [],
     "motion": [
       {
-        "name": "shell-grow",
-        "value": "192ms cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Native shell resizing over twelve 16ms frames."
+        "name": "unfold",
+        "value": "response 0.42; damping 0.78",
+        "purpose": "Reef and rail contour spring."
       },
       {
-        "name": "control-hover",
-        "value": "120ms ease-out",
-        "purpose": "Color and tonal response on interactive controls."
+        "name": "contents",
+        "value": "response 0.36; damping 0.82; stagger 45ms; maximum 180ms",
+        "purpose": "Staged content release during unfold."
       },
       {
-        "name": "tide-hover",
-        "value": "160ms cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "The Reef tide line widens without expanding the shell."
+        "name": "glide",
+        "value": "response 0.5; damping 0.86",
+        "purpose": "Module-aligned detail movement."
       },
       {
-        "name": "meter-update",
-        "value": "80ms linear",
-        "purpose": "Coalesced volume changes inside one Compact state."
+        "name": "reading",
+        "value": "response 0.9; damping 0.9",
+        "purpose": "Measured rings, numbers and usage bars."
+      },
+      {
+        "name": "crossfade",
+        "value": "160ms",
+        "purpose": "Outgoing inert and incoming detail content."
+      },
+      {
+        "name": "codex-refresh",
+        "value": "950ms; cubic-bezier(0.32,0,0.14,1)",
+        "purpose": "Finite response to a requested usage refresh."
       }
     ],
     "breakpoints": []
   },
   "components": [
     {
-      "name": "Reef",
-      "kind": "custom",
-      "description": "Atoll's dormant, top-attached discoverable state.",
-      "html": "<button class=\"ds-reef\" aria-label=\"Open Atoll\"><span></span></button>",
-      "css": ".ds-reef{position:relative;width:80px;height:12px;padding:0;border:0;border-radius:0 0 12px 12px;background:#101318;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);cursor:pointer}.ds-reef span{position:absolute;left:50%;bottom:2px;width:28px;height:2px;border-radius:2px;background:#65d6c5;opacity:.72;transform:translateX(-50%);transition:width 160ms cubic-bezier(.16,1,.3,1),opacity 160ms ease-out}.ds-reef:hover span{width:36px;opacity:1}.ds-reef:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+      "name": "Measured status ring",
+      "kind": "button",
+      "refersTo": "status-ring",
+      "description": "Reference-scale Codex used-percentage ring. The sample is labeled as illustrative.",
+      "html": "<button class=\"ds-ring\" aria-label=\"Sample Codex usage: 32%\"><svg viewBox=\"0 0 44 44\" aria-hidden=\"true\"><circle class=\"ds-track\" cx=\"22\" cy=\"22\" r=\"19.085470085470085\"/><circle class=\"ds-signal\" cx=\"22\" cy=\"22\" r=\"19.085470085470085\" stroke-dasharray=\"119.91754522164116\" stroke-dashoffset=\"81.543930750716\"/><path d=\"m17 17-5 5 5 5m10-10 5 5-5 5m-4-15-2 14\" transform=\"translate(0 -2)\"/></svg><span>32%</span></button>",
+      "css": ".ds-ring{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;width:69px;display:grid;justify-items:center;gap:10.116px;padding:8px 0;border:0;background:var(--shell-opaque-fallback,#000);color:#00FF88;font-size:14.2211px;font-weight:600;line-height:17px;font-variant-numeric:tabular-nums;cursor:pointer}.ds-ring svg{width:44px;height:44px;fill:none}.ds-track{stroke:#303030;stroke-width:5.82906}.ds-signal{stroke:#00FF88;stroke-width:3.00855;stroke-linecap:round;transform:rotate(-90deg);transform-origin:center}.ds-ring path{stroke:#eee;stroke-width:1.4}.ds-ring:hover{color:#fff}.ds-ring:focus-visible{outline:1px solid #fff;outline-offset:1px}.ds-ring:active{opacity:.8}"
     },
     {
-      "name": "Compact Media",
-      "kind": "card",
-      "refersTo": "shell-compact",
-      "description": "A single current media status with one trailing action.",
-      "html": "<button class=\"ds-compact\"><span class=\"ds-cover\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><ellipse cx=\"12\" cy=\"12\" rx=\"7\" ry=\"4.6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.3\"/></svg></span><span class=\"ds-copy\"><strong>Blue Hour</strong><small>Maya Chen</small></span><span class=\"ds-play\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8 6.5 18 12 8 17.5Z\" fill=\"currentColor\"/></svg></span></button>",
-      "css": ".ds-compact{position:relative;width:188px;height:44px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:5px 9px 5px 7px;border:0;border-radius:0 0 22px 22px;color:#f5f7fa;background:#0b0d10;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;text-align:left}.ds-compact:before{content:\"\";position:absolute;top:0;left:50%;width:36px;height:1px;background:#65d6c5;opacity:.68;transform:translateX(-50%)}.ds-cover{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;color:#65d6c5;background:#17211f}.ds-cover svg{width:22px}.ds-copy{min-width:0;display:grid}.ds-copy strong,.ds-copy small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-copy strong{font-size:12px;line-height:16px}.ds-copy small{color:#abb4c0;font-size:9.5px;line-height:13px}.ds-play{color:#65d6c5}.ds-play svg{width:15px;height:15px}.ds-compact:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+      "name": "Primary media transport",
+      "kind": "button",
+      "refersTo": "media-transport-primary",
+      "description": "White primary play/pause disc within a focused media detail.",
+      "html": "<button class=\"ds-transport\" aria-label=\"Pause\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8 5v14M16 5v14\"/></svg></button>",
+      "css": ".ds-transport{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;width:32px;height:32px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;color:#000;background:#fff;cursor:pointer;transition:background-color 120ms ease-out,transform 100ms ease-out}.ds-transport svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}.ds-transport:hover{background:#ddd}.ds-transport:focus-visible{outline:2px solid #fff;outline-offset:3px}.ds-transport:active{transform:scale(.96)}.ds-transport:disabled{opacity:.46;cursor:default}"
     },
     {
-      "name": "Expanded Shell",
-      "kind": "card",
-      "refersTo": "shell-expanded",
-      "description": "The three-row quick-action surface used for media, home, and settings.",
-      "html": "<section class=\"ds-expanded\"><header><strong>Atoll</strong><small>Your status, surfaced.</small></header><div class=\"ds-basin\">One current task</div><footer>Ctrl + Shift + Space</footer></section>",
-      "css": ".ds-expanded{position:relative;width:384px;height:148px;display:grid;grid-template-rows:auto 1fr auto;padding:8px 16px;border-radius:0 0 12px 12px;color:#f5f7fa;background:#0b0d10;box-shadow:0 12px 34px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.08);font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif}.ds-expanded:before{content:\"\";position:absolute;top:0;left:50%;width:40px;height:1px;border-radius:0 0 3px 3px;background:#65d6c5;opacity:.72;transform:translateX(-50%)}.ds-expanded header{display:grid}.ds-expanded strong{font-size:13px}.ds-expanded small,.ds-expanded footer{color:#abb4c0;font-size:9.5px}.ds-basin{align-self:center;padding:8px;border-radius:8px;color:#abb4c0;background:#15181d;font-size:12px}"
-    },
-    {
-      "name": "Media Transport",
+      "name": "Secondary media transport",
       "kind": "button",
       "refersTo": "media-transport",
-      "description": "A circular transport family: Play/Pause is 42 DIP with a mint glyph; Previous and Next are quiet 36 DIP controls.",
-      "html": "<button class=\"ds-media-button ds-media-button--primary\" aria-label=\"Pause\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M8.5 6.5v11M15.5 6.5v11\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg></button>",
-      "css": ".ds-media-button{width:36px;height:36px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;color:#abb4c0;background:rgba(255,255,255,.0605);box-shadow:inset 0 0 0 1px rgba(255,255,255,.0837);cursor:pointer;transition:color 120ms ease-out,background-color 120ms ease-out,transform 100ms ease-out}.ds-media-button--primary{width:42px;height:42px;color:#65d6c5;box-shadow:0 1px 2px rgba(0,0,0,.18),inset 0 0 0 1px rgba(255,255,255,.12),inset 0 1px rgba(255,255,255,.28)}.ds-media-button:hover{color:#f5f7fa;background:rgba(255,255,255,.1116)}.ds-media-button--primary:hover{color:#79dfcf}.ds-media-button:focus-visible{outline:2px solid #65d6c5;outline-offset:-4px}.ds-media-button:disabled{opacity:.32;cursor:default}"
+      "description": "Quiet previous/next control alongside the primary transport.",
+      "html": "<button class=\"ds-secondary\" aria-label=\"Next\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m6 5 9 7-9 7V5ZM18 5v14\"/></svg></button>",
+      "css": ".ds-secondary{width:28px;height:28px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;color:#b3b3b3;background:transparent;cursor:pointer}.ds-secondary svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.ds-secondary:hover{color:#fff;background:#1c1c1c}.ds-secondary:focus-visible{outline:2px solid #fff}.ds-secondary:active{transform:scale(.96)}.ds-secondary:disabled{opacity:.32;cursor:default}"
     },
     {
-      "name": "Settings Toggle",
-      "kind": "custom",
-      "refersTo": "toggle-on",
-      "description": "A compact behavior switch that keeps accent color subordinate to the label.",
-      "html": "<button class=\"ds-setting\" role=\"switch\" aria-checked=\"true\"><span><strong>In full screen</strong><small>Hide Atoll automatically</small></span><i><b></b></i></button>",
-      "css": ".ds-setting{width:310px;min-height:31px;display:flex;align-items:center;justify-content:space-between;padding:3px 5px;border:0;border-radius:8px;color:#f5f7fa;background:transparent;font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;text-align:left;cursor:pointer}.ds-setting:hover{background:#15181d}.ds-setting>span{display:grid}.ds-setting strong{font-size:10.5px}.ds-setting small{color:#abb4c0;font-size:8.5px}.ds-setting i{width:30px;height:17px;display:flex;align-items:center;padding:2px;border-radius:10px;background:rgba(101,214,197,.44)}.ds-setting b{width:13px;height:13px;border-radius:50%;background:#65d6c5;transform:translateX(13px)}.ds-setting:focus-visible{outline:2px solid #65d6c5;outline-offset:-2px}"
+      "name": "Settings arc and gear",
+      "kind": "button",
+      "description": "A resting quarter arc becomes a gear disc on hover or keyboard focus.",
+      "html": "<button class=\"ds-orb\" aria-label=\"Open settings\"><svg class=\"ds-arc\" viewBox=\"-36 -36 72 72\" aria-hidden=\"true\"><path d=\"M28.581 0A28.581 28.581 0 0 0 0-28.581\"/></svg><span class=\"ds-disc\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z\"/></svg></span></button>",
+      "css": ".ds-orb{position:relative;width:46.63px;height:46.63px;border:0;background:transparent;color:#fff;display:grid;place-items:center;cursor:pointer}.ds-arc{position:absolute;width:72px;height:72px;fill:none;stroke:#000;stroke-width:6.769px;stroke-linecap:round;transition:opacity 160ms}.ds-disc{position:absolute;inset:0;display:grid;place-items:center;border-radius:50%;background:#000;opacity:0;transform:scale(1.1);transition:opacity 160ms,transform 594ms var(--orb-spring,cubic-bezier(.16,1,.3,1))}.ds-disc svg{width:21.06px;height:21.06px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.ds-orb:is(:hover,:focus-visible) .ds-arc{opacity:0}.ds-orb:is(:hover,:focus-visible) .ds-disc{opacity:1;transform:none}.ds-orb:focus-visible{outline:1px solid #fff;outline-offset:-4px}@media(prefers-reduced-motion:reduce){.ds-arc,.ds-disc{transition:none}}"
+    },
+    {
+      "name": "Focused detail",
+      "kind": "card",
+      "refersTo": "detail",
+      "description": "Black rounded detail container; the live shell supplies its module-aligned tail.",
+      "html": "<section class=\"ds-detail\" aria-label=\"Sample detail\"><strong>Media</strong><span>Current player information</span><button>Back</button></section>",
+      "css": ".ds-detail{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;width:225.641px;min-height:120px;padding:12.0342px;display:grid;align-content:start;gap:6px;border-radius:18.6154px;background:#000;color:#fff}.ds-detail strong{font-size:12px;line-height:16px}.ds-detail span{font-size:10px;line-height:14px;color:#b3b3b3}.ds-detail button{justify-self:start;border:0;border-radius:6px;background:transparent;color:#b3b3b3;padding:5px 9px;font:inherit;font-size:10px;cursor:pointer}.ds-detail button:hover{background:#1c1c1c;color:#fff}.ds-detail button:focus-visible{outline:2px solid #fff}.ds-detail button:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Placement options",
+      "kind": "nav",
+      "refersTo": "setting-option",
+      "description": "The real four-edge segmented choice; selected values invert to white.",
+      "html": "<nav class=\"ds-options\" aria-label=\"Placement\"><button aria-pressed=\"true\">Top</button><button aria-pressed=\"false\">Bottom</button><button aria-pressed=\"false\">Left</button><button aria-pressed=\"false\">Right</button></nav>",
+      "css": ".ds-options{font-family:\"Segoe UI Variable Text\",\"Segoe UI\",sans-serif;display:flex;gap:4px;background:#000;padding:8px}.ds-options button{flex:1;min-width:45px;min-height:30px;padding:5px 9px;border:1px solid #303030;border-radius:6px;color:#b3b3b3;background:transparent;font:inherit;font-size:11px;line-height:18px;cursor:pointer}.ds-options button:hover{color:#fff;background:#1c1c1c}.ds-options button[aria-pressed=true]{color:#000;background:#fff;border-color:#fff}.ds-options button:focus-visible{outline:2px solid #fff;outline-offset:2px}.ds-options button:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "System volume range",
+      "kind": "input",
+      "description": "Native range with a measured split fill, keyboard control and visible focus.",
+      "html": "<input class=\"ds-volume\" type=\"range\" min=\"0\" max=\"100\" value=\"45\" aria-label=\"Sample system volume\" aria-valuetext=\"45%\">",
+      "css": ".ds-volume{width:200px;height:22px;margin:0;padding:0;appearance:none;border-radius:999px;background:linear-gradient(to right,#fff 0 45%,#303030 45% 100%);cursor:pointer}.ds-volume::-webkit-slider-runnable-track{height:3px;border-radius:999px;background:transparent}.ds-volume::-webkit-slider-thumb{width:10px;height:10px;margin-top:-3.5px;appearance:none;border:0;border-radius:50%;background:#fff}.ds-volume:hover::-webkit-slider-thumb{transform:scale(1.08)}.ds-volume:focus-visible{outline:2px solid #fff;outline-offset:2px}.ds-volume:active{cursor:grabbing}"
     }
   ],
   "narrative": {
-    "northStar": "The Quiet Tide Line",
-    "overview": "Atoll is a dark, edge-attached instrument that feels grown from the top of the display rather than placed on it. Its material is dense and calm: near-black basins, one thin mint tide line, and content that appears only when it earns the space. The visual system should feel native to a Windows 11 workspace without becoming a collage of system controls.\n\nThe shell is the identity. Reef, Compact, and Expanded are three expressions of one object, so changes in size precede content reflow and never resemble separate windows replacing one another. Mint is a scarce signal of life, while transient system feedback uses a restrained module wash rather than another permanent accent.",
+    "northStar": "The Codenotch Edge",
+    "overview": "The user-selected Codenotch reference governs Atoll’s desktop surface: pure black silhouettes, inverse edge curls, large measured status rings and a separate settings arc. This explicitly replaces the previous Widgets-Acrylic shell and mint tide-line treatment. Atoll remains a calm Windows utility with its existing Inset Cove identity and local media, volume, battery-discharge and optional Codex capabilities.\n\nOne object moves between Reef, status rail and an attached detail bubble. The black silhouette and its spacing carry the identity; color explains measured Codex usage. Existing controls and recovery states remain accessible inside purpose-sized details. The application and notification-area artwork retain their authored graphite and mint treatment outside this monochrome shell.",
     "keyCharacteristics": [
-      "Edge-attached silhouettes with open top edges and rounded lower corners.",
-      "Dense information hierarchy sized for a glance, not a dashboard.",
-      "A single tide-line signature shared across every shell state.",
-      "Tonal layering and ambient depth instead of bright borders.",
-      "Authored outline icons and tabular numerals for changing values."
+      "Pure black edge silhouettes with inverse curls and an attached, rounded detail bubble.",
+      "Four upright modules on every work-area edge, with measured values and stable ring spacing.",
+      "One reference-derived motion compositor for the visible contour, native hit region and content.",
+      "Neutral media, volume and energy presentation; colored Codex usage only when real data exists.",
+      "Persistent settings and management views extend the reference without changing its visual grammar."
     ],
     "rules": [
       {
-        "name": "The One Tide Rule",
-        "body": "Mint should remain a minority of the visible surface; use it to explain state, not to decorate empty space.",
+        "name": "The Measured Color Rule",
+        "body": "Green, yellow and orange encode reported Codex used percentage. They do not decorate media, volume or battery energy, and color never replaces the numeric reading.",
         "section": "colors"
       },
       {
-        "name": "The One-Glance Rule",
-        "body": "Compact text is always single-line and ellipsized; Atoll never uses a permanent marquee.",
+        "name": "The Upright Reading Rule",
+        "body": "Docking changes the silhouette and module arrangement; labels, artwork and detail controls remain upright.",
         "section": "typography"
       },
       {
-        "name": "The Basin Rule",
-        "body": "Add depth by changing surface tone before adding another shadow.",
+        "name": "The Shared Contour Rule",
+        "body": "SVG paint and the Windows input region consume the same sampled geometry on each animation frame. Transparent host space remains click-through except for the narrow pointer corridors.",
         "section": "elevation"
       }
     ],
     "dos": [
-      "Do let the tide line and shell transformation carry the brand.",
-      "Do keep the most important value readable in a peripheral glance.",
-      "Do use tabular numerals for changing percentages.",
-      "Do update content in-place when the shell size does not change.",
-      "Do preserve a clear icon, label, or shape cue in addition to semantic color."
+      "Do derive shell geometry and ring proportions from the shared Codenotch constants.",
+      "Do retain upright labels, tabular changing values and source-specific unavailable states.",
+      "Do keep the detail tail aligned with the inspected module while preserving the rail position.",
+      "Do respect reduced motion and keep routine snapshots from replaying entrance animation.",
+      "Do preserve the Inset Cove mark, local data boundaries, Codex opt-in and complete recovery controls."
     ],
     "donts": [
-      "Don't turn Expanded into a dashboard or add a fourth content row.",
-      "Don't use permanent scrolling text, pulsing glows, or decorative idle animation.",
-      "Don't round the top corners into a detached Apple-style pill.",
-      "Don't mix icon families or substitute text glyphs for product icons.",
-      "Don't add borders and shadows to every nested surface."
+      "Don’t restore Acrylic, decorative surface gradients, glow or a shadow gutter around the notch.",
+      "Don’t replace missing measurements with a filled ring, a fabricated percentage or an apparent zero.",
+      "Don’t turn ring color into a generic health score or battery-charge claim.",
+      "Don’t resize the native host separately from the shared frame compositor to animate shell states.",
+      "Don’t apply the shell’s flat-material rule to the existing authored application-icon artwork."
     ]
   }
 }

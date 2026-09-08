@@ -1,4 +1,5 @@
 mod app_controls;
+mod codex_usage;
 mod connect;
 mod energy;
 mod fullscreen;
@@ -21,6 +22,7 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
+        .manage(codex_usage::CodexUsageRuntime::default())
         .manage(connect::ConnectRuntime::default())
         .manage(energy::EnergyRuntime::default())
         .manage(runtime::RuntimeState::default())
@@ -31,6 +33,7 @@ pub fn run() {
             let quick_menu = app_controls::setup_tray(app)?;
             app.manage(quick_menu);
             app_controls::setup_shortcut(app)?;
+            codex_usage::start(app.handle().clone());
             connect::start(app.handle().clone());
             energy::start_watcher(app.handle().clone());
             volume::start_watcher(app.handle().clone());
@@ -42,6 +45,9 @@ pub fn run() {
             shell::set_window_shell,
             app_controls::show_context_menu,
             app_controls::set_menu_language,
+            codex_usage::codex_usage_status,
+            codex_usage::codex_usage_set_enabled,
+            codex_usage::codex_usage_refresh,
             connect::media_command,
             connect::media_seek,
             connect::media_select_source,

@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { MediaCommand } from "../features/media/commands";
 import type { UiLanguage } from "../i18n";
+import type { NotchEdge, NotchRegion } from "../shell/geometry";
 import type {
+  NativeCodexUsagePayload,
   NativeEnergyPayload,
   NativeMediaUpdatePayload,
   NativeVolumePayload,
@@ -22,6 +24,8 @@ export interface NativeShellRequest {
   cornerRadius: number;
   animated: boolean;
   topMargin: number;
+  edge: NotchEdge;
+  regions: NotchRegion[];
   theme: "light" | "dark";
   transitionId: number;
 }
@@ -32,6 +36,7 @@ export interface NativeShellSettledPayload {
 
 export interface NativeEventHandlers {
   onAction(action: string): void;
+  onCodexUsage(payload: NativeCodexUsagePayload): void;
   onEnergy(payload: NativeEnergyPayload): void;
   onMediaUpdate(payload: NativeMediaUpdatePayload): void;
   onVolume(payload: NativeVolumePayload): void;
@@ -53,6 +58,18 @@ export function getEnergyStatus(): Promise<NativeEnergyPayload> {
   return invoke<NativeEnergyPayload>("energy_status");
 }
 
+export function getCodexUsageStatus(): Promise<NativeCodexUsagePayload> {
+  return invoke<NativeCodexUsagePayload>("codex_usage_status");
+}
+
+export function setNativeCodexUsageEnabled(enabled: boolean): Promise<NativeCodexUsagePayload> {
+  return invoke<NativeCodexUsagePayload>("codex_usage_set_enabled", { enabled });
+}
+
+export function refreshNativeCodexUsage(): Promise<NativeCodexUsagePayload> {
+  return invoke<NativeCodexUsagePayload>("codex_usage_refresh");
+}
+
 export function applyNativeShell(request: NativeShellRequest): Promise<void> {
   return invoke("set_window_shell", {
     shell: request.shell,
@@ -61,6 +78,8 @@ export function applyNativeShell(request: NativeShellRequest): Promise<void> {
     cornerRadius: request.cornerRadius,
     animated: request.animated,
     topMargin: request.topMargin,
+    edge: request.edge,
+    regions: request.regions,
     theme: request.theme,
     transitionId: request.transitionId,
   });
@@ -106,6 +125,9 @@ export function setNativeSystemMute(muted: boolean): Promise<boolean> {
 export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<UnlistenFn[]> {
   return Promise.all([
     listen<string>("atoll-action", ({ payload }) => handlers.onAction(payload)),
+    listen<NativeCodexUsagePayload>("codex-usage-update", ({ payload }) =>
+      handlers.onCodexUsage(payload),
+    ),
     listen<NativeEnergyPayload>("energy-update", ({ payload }) => handlers.onEnergy(payload)),
     listen<NativeMediaUpdatePayload>("media-update", ({ payload }) =>
       handlers.onMediaUpdate(payload),

@@ -1,111 +1,203 @@
 ---
 name: Atoll
-description: A quiet Windows status island for media, volume, and quick controls.
+description: A Windows edge notch for measured status and immediate controls.
 colors:
-  island-dark-acrylic: "rgba(84, 84, 84, 0.80)"
-  island-light-acrylic: "rgba(211, 211, 211, 0.76)"
-  island-dark-card: "rgba(44, 44, 44, 0.80)"
-  island-light-card: "rgba(242, 242, 242, 0.78)"
-  island-dark-opaque: "#545454"
-  island-light-opaque: "#d3d3d3"
-  island-text-dark: "#f5f7fb"
-  island-text-light: "#1c222d"
-  island-secondary-dark: "#c4c8d1"
-  island-secondary-light: "#556072"
-  island-signal: "#78e2d1"
-  media-emphasis: "#f5f5f7"
+  shell-black: "#000000"
+  reading-white: "#FFFFFF"
+  ring-track: "#303030"
+  usage-track: "#2D2D2D"
+  secondary-text: "#B3B3B3"
+  quiet-text: "#999999"
+  control-surface: "#1C1C1C"
+  control-hover: "#2C2C2C"
+  usage-green: "#00FF88"
+  usage-yellow: "#F2FF00"
+  usage-orange: "#FF3F00"
 typography:
-  family: "Segoe UI Variable Text, Segoe UI, sans-serif"
-  compact-title: "12.5px / 15px"
-  media-title: "14px / 16px"
-  metadata: "10–10.5px"
-geometry:
-  top-anchor: "host starts 12 DIP above the display edge"
-  reef: "visible 96 × 32 DIP; host 96 × 44 DIP; 12 DIP radius"
-  compact: "visible 256 × 56 DIP; host 256 × 68 DIP; 12 DIP radius"
-  expanded: "visible 400 × 176 DIP; host 400 × 188 DIP; 12 DIP radius"
+  title:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
+    fontSize: "12px"
+    lineHeight: "16px"
+  label:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
+    fontSize: "14.2211px"
+    fontWeight: 600
+    lineHeight: "17px"
+  caption:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
+    fontSize: "10px"
+    lineHeight: "14px"
+  usage-row:
+    fontFamily: "Segoe UI Variable Text, Segoe UI, sans-serif"
+    fontSize: "9.48px"
+    fontWeight: 400
+    lineHeight: "12px"
+rounded:
+  control: "6px"
+  artwork: "5px"
+  detail: "18.6154px"
+spacing:
+  tight: "4px"
+  related: "6px"
+  controls: "12px"
+  detail-inset: "12.0342px"
+components:
+  status-ring:
+    width: "44px"
+    height: "44px"
+    textColor: "{colors.reading-white}"
+  detail:
+    backgroundColor: "{colors.shell-black}"
+    textColor: "{colors.reading-white}"
+    rounded: "{rounded.detail}"
+    padding: "{spacing.detail-inset}"
+  setting-option:
+    backgroundColor: "transparent"
+    textColor: "{colors.secondary-text}"
+    rounded: "{rounded.control}"
+    padding: "5px 9px"
+  setting-option-selected:
+    backgroundColor: "{colors.reading-white}"
+    textColor: "{colors.shell-black}"
+    rounded: "{rounded.control}"
+  media-transport:
+    backgroundColor: "transparent"
+    textColor: "{colors.secondary-text}"
+    width: "28px"
+    height: "28px"
+  media-transport-primary:
+    backgroundColor: "{colors.reading-white}"
+    textColor: "{colors.shell-black}"
+    width: "32px"
+    height: "32px"
 ---
 
-# Atoll Design System
+# Design System: Atoll
 
-## Intent
+## Overview
 
-Atoll is a Windows status island: a small, centered, always-on-top surface that expands only when status needs attention. It borrows the interaction grammar of a compact media island—one shared shape that changes size and releases content in stages—without copying Apple artwork, icons, or hardware framing.
+**Creative North Star: "The Codenotch Edge"**
 
-The visual identity is deliberately spare. The Windows Widgets-inspired Acrylic shell, Segoe typography, one mint live signal, and exact centered placement are more important than decorative material or a dense widget layout. It is a compact status surface attached to the display edge—not a miniature dashboard.
+The user-selected Codenotch reference governs Atoll’s desktop surface: pure black silhouettes, inverse edge curls, large measured status rings and a separate settings arc. This explicitly replaces the previous Widgets-Acrylic shell and mint tide-line treatment. Atoll remains a calm Windows utility with its existing Inset Cove identity and local media, volume, battery-discharge and optional Codex capabilities.
 
-## Shell contract
+One object moves between Reef, status rail and an attached detail bubble. The black silhouette and its spacing carry the identity; color explains measured Codex usage. Existing controls and recovery states remain accessible inside purpose-sized details. The application and notification-area artwork retain their authored graphite and mint treatment outside this monochrome shell.
 
-| State | Geometry | Purpose |
+**Key Characteristics:**
+
+- Pure black edge silhouettes with inverse curls and an attached, rounded detail bubble.
+- Four upright modules on every work-area edge, with measured values and stable ring spacing.
+- One reference-derived motion compositor for the visible contour, native hit region and content.
+- Neutral media, volume and energy presentation; colored Codex usage only when real data exists.
+- Persistent settings and management views extend the reference without changing its visual grammar.
+
+## Colors
+
+The shell uses black, white and a short neutral ramp; the three usage colors preserve the reference’s precise meaning.
+
+### Primary
+
+- **Usage Green**, **Usage Yellow** and **Usage Orange** belong to actual Codex usage rings, readings and detail meters. The bands are below 50%, from 50% to below 70%, and 70% or above. At 100%, the glyph dims while the ring and reading remain visible.
+- The packaged mint brand artwork remains an identity asset. It does not define the shell’s status palette.
+
+### Neutral
+
+- **Shell Black** paints the silhouette and detail bubble.
+- **Reading White** carries primary copy, media and volume progress, and selected controls.
+- **Ring Track** and **Usage Track** expose the denominator without implying a value when the signal is unavailable.
+- **Secondary Text** and **Quiet Text** distinguish metadata and local reset times.
+- **Control Surface** and **Control Hover** support interactive controls inside details without adding elevated cards.
+
+**The Measured Color Rule.** Green, yellow and orange encode reported Codex used percentage. They do not decorate media, volume or battery energy, and color never replaces the numeric reading.
+
+## Typography
+
+**Body Font:** Segoe UI Variable Text, with Segoe UI and sans-serif fallbacks.
+
+**Character:** One native Windows family supports a compact title, clear ring reading and quieter supporting text. There is no editorial display face or decorative monospace treatment. Percentages, times and changing measurements use tabular numerals.
+
+### Hierarchy
+
+- **Title:** media and recovery headings use the compact title role; established settings and management headers retain their slightly larger local hierarchy.
+- **Label:** the reference-derived ring label is the strongest peripheral reading.
+- **Caption:** media metadata and recovery instructions remain secondary and may wrap when comprehension requires it.
+- **Usage row:** compact window labels, reset copy and percentage text form two repeatable rows. This specialized detail role is not a general minimum text size.
+
+Titles may truncate with a complete accessible name or tooltip. Energy-history captions wrap inside their narrow detail; no permanent marquee is used.
+
+**The Upright Reading Rule.** Docking changes the silhouette and module arrangement; labels, artwork and detail controls remain upright.
+
+## Layout
+
+The physical desktop work area defines the four docking edges. Top and bottom use a horizontal module sequence; left and right use a vertical sequence. A fixed transparent native host reserves room for all details and spring overshoot. Reef, rail and detail transitions change painted geometry within that host; the host rectangle is not a visible surface.
+
+The reference proportions come from `src/shell/codenotch.ts`, using a 44-DIP ring as the calibration unit. `notchMetrics` derives depth, leading space, pitch and ring centers for the two orientations. Keep those formulas authoritative rather than reintroducing a separate CSS layout scale.
+
+| Surface | Current logical size | Purpose |
 | --- | --- | --- |
-| Reef | Visible 96 × 32 DIP; native host 96 × 44 DIP, radius 12 | Persistent entry point: Atoll mark plus a small activity dot. |
-| Compact | Visible 256 × 56 DIP; native host 256 × 68 DIP, radius 12 | A short status or now-playing summary. It can hold a 40 DIP cover, two ellipsized text lines, and a 34 DIP primary action. |
-| Expanded | Visible 400 × 176 DIP; native host 400 × 188 DIP, radius 12 | Home, media, or settings panel. |
+| Reef | approximately 78.97 × 9.78; rotated at side edges | Small hover and keyboard entry point |
+| Common detail | approximately 225.64 wide | Reference-scale focused reading |
+| Media / Codex detail | common width × 176 | Playback controls or two actual usage windows |
+| Energy detail | common width × 224 | Seven-day history, wrapped caption and selected measurement |
+| Volume detail | common width × 120 | Level, mute and system-volume range |
+| Settings | 360 × 320 | Language, four-edge placement, visibility and fullscreen preference |
+| Home / Sources | 300 × 210 | Existing Atoll management and source-selection controls |
 
-- Every state is top-centered on the primary display. Its full native host starts 12 DIP above the monitor, so the display edge crops the upper corners and the visible object is genuinely edge-attached rather than floated with a gap.
-- Every host still owns four rounded corners. CSS clips the full rounded rectangle, and the Windows native region follows that geometry at the current DPI; only the monitor crops the upper pair, so no rectangular hit area or compositor spill is exposed.
-- The host window is transparent, decorationless, non-focusable, always on top, absent from the taskbar, and has no platform shadow. The visible Island itself supplies the silhouette.
-- Native sizing and centering are updated together on the same 16ms transition frame through one native Windows window transaction. The frontend releases text and controls only after the native geometry settles; do not let CSS independently reposition the Island.
+Settings and management dimensions are intentional Atoll extensions. Overflow remains scrollable where real content requires it; same-panel updates preserve scroll position and focused controls.
 
-## Color and material
+## Elevation & Depth
 
-The Island takes its material and geometry cues from the Windows Widgets Pane: one neutral Acrylic shell with quiet internal backplates. The WebView paints the material itself — a neutral translucent base with one extremely soft top reflection — clipped by the CSS radius and matching native window region, so no rectangular backing can appear outside the silhouette. Native Windows Acrylic is not used for the backdrop: its compositor paints a rectangle even into region-excluded pixels, which leaves visible corners. A transparent WebGL material layer may add one brief, neutral light sweep for expansion or a meaningful media action, then stops. Reduced-transparency mode uses the theme-appropriate opaque fallback directly.
+The notch and its details have no surface shadow, Acrylic, backdrop blur or ornamental gradient. Black contours, the gap around the tail and a small neutral control vocabulary establish separation from the desktop. A range’s split fill encodes its measured value; it is not a decorative material gradient.
 
-- `#f5f7fb` / `#1c222d`: primary text in dark / light themes.
-- `#c4c8d1` / `#556072`: secondary metadata and secondary transport controls.
-- `#9299a7` / `#727d8f`: low-priority information and disabled states.
-- Near-white in dark mode and charcoal in light mode: media progress and primary transport control.
-- `#78e2d1`: the one Atoll live signal—for the Reef activity dot and keyboard focus only.
-- `#545454` / `#d3d3d3`: opaque accessibility fallback in dark / light themes.
-- `rgba(84, 84, 84, 0.80)` / `rgba(211, 211, 211, 0.76)`: dark / light neutral Acrylic base of the shell material. These are the visual equivalents of the Widgets Pane's `#545454 / 64%` and `#d3d3d3 / 44%` luminosity layers: the WebView cannot blur native desktop pixels behind its transparent host, so the fallback is intentionally denser to prevent desktop text from leaking through.
-- `rgba(44, 44, 44, 0.80)` / `rgba(242, 242, 242, 0.78)`: quiet content backplates, with a low-contrast one-pixel border and a `0 2px 4px rgba(0,0,0,.04)` card shadow.
+**The Shared Contour Rule.** SVG paint and the Windows input region consume the same sampled geometry on each animation frame. Transparent host space remains click-through except for the narrow pointer corridors.
 
-Do not introduce dashboard grids, broad tinted module backgrounds, ornamental glows, a separate shadow gutter, or multiple accent colors. Acrylic belongs to the one shared shell only; depth comes from its neutral tone, controlled inner reflection, and a small number of quiet card layers.
+## Shapes
 
-## Typography and content density
+Inverse edge curls and outer corners derive from the reference’s circular arcs. The same sampled polygons drive SVG and Win32 clipping. Rounded detail corners and the triangular tail belong to one continuous black painted surface. Do not replace the shared contours with unrelated border-radius approximations.
 
-Use `Segoe UI Variable Text`, then `Segoe UI`, then `sans-serif`. Media and status copy is single-line and ellipsized; no marquee or permanent scrolling text is allowed. Primary media titles use 14/16, compact titles use 12.5/15, and metadata stays near 10–10.5px.
+Status rings have a complete neutral track and a thinner measured signal with round endpoints. Settings rests as a quarter arc and becomes a black disc with a white gear on hover or keyboard focus.
 
-The media cover is an anchor rather than decoration: 40 × 40 DIP in Compact and Home, 52 × 52 DIP in Expanded, all with a 6 DIP radius and a subtle inset edge. In Expanded Media, previous/next are quiet 36 DIP circles and the theme-appropriate primary play/pause control is 44 DIP. Keep unavailable commands visible but subdued and non-actionable.
+The Inset Cove v2 mark remains the authored asymmetric reef with its left-offset lagoon counter and upper-right cove. Preserve `assets/atoll-icon.svg`, `assets/atoll-tray.svg` and their optical differences. The shell uses the glyph in current text color; the installer, Explorer and tray masters keep their graphite/mint artwork.
 
-## Expanded panels
+## Components
 
-Expanded has five focused contexts:
+### Status rail
 
-- **Home:** a compact Atoll identity row (system-volume control, hide, and settings affordances), then two vertically stacked widgets: current media and today's battery-discharge status. The media tile carries a restrained ink-indigo category veil; the lower status carries a quiet mineral-amber measurement veil. These colors identify content type, never a good/bad battery-health judgement. The lower status remains battery-only and visually quieter than the playable media tile; selecting it opens the focused history view.
-- **Energy history:** a single seven-day battery-discharge strip, with one selectable real record at a time and its exact value in the lower readout. Today is live; preceding dates come only from completed persisted records. Missing dates stay empty rather than being rendered as zero, and a dashed bar cap plus text identifies a partial record. Sampling never opens this panel automatically.
-- **Media:** cover and two-line metadata, optional progress, previous/play-next transport, and source feedback. When the current Windows media session explicitly supports seeking, the same two-pixel timeline becomes a direct click/drag control; otherwise it remains an unfocusable read-only meter.
-- **Sources:** a short radio list for choosing the Windows media source when more than one compatible player is available.
-- **Settings:** Chinese/English language selection and the fullscreen-hide switch. Settings remain deliberately short.
+Media, volume, battery-discharge energy and Codex remain directly reachable. Media has a white progress signal only with a real duration. Volume has a white level signal and an explicit mute glyph. Energy has a neutral track and an adaptive measured unit, never a charge percentage. Disabled or unavailable Codex shows a neutral glyph and opens its consent or recovery detail.
 
-Controls use authored outline icons, explicit accessible labels, visible keyboard focus, and tabular numerals for changing time or volume. A context menu remains available from secondary click.
+Hovering a module inspects its detail. Clicking blank rail space pins or unpins the surface. Keyboard focus exposes explicit pin and collapse affordances; Escape, tray and shortcut remain alternate paths. Clicking enabled Codex requests a refresh; clicking settings pins its management view.
 
-## Behavior
+### Detail containers
 
-- Reef opens to Expanded only on click; hover is visual feedback only.
-- A meaningful track change or system-volume update may open the relevant Expanded panel. Manual hide and fullscreen suppression take priority.
-- Expanded collapses after the configured idle interval (4 seconds by default). Pointer-down, mouse-wheel activity, keyboard activity, and in-panel actions refresh that interval. A pending media command also prevents a premature collapse.
-- Clicking the non-action area of an expanded Island collapses it; Escape collapses it as well.
-- On collapse, ordinary idle content returns to Reef rather than leaving a shrunken media card on screen.
+The focused bubble aligns its tail with the inspected module. Its content remains at a complete layout size while the contour moves. Media retains real transport, conditional seek and source selection. Energy retains missing-day gaps, partial-record cues and selectable measurements. Codex retains at most two ranked real usage windows, local reset copy, opt-in, honest recovery and turn-off controls.
 
-## Motion
+### Buttons and settings
 
-The outer shape is native, not a CSS scale effect. Width, height, and corner radius follow the same smoothstep curve at 16ms target frames: expansion uses 15 frames (about 240ms) and contraction uses 11 (about 176ms). Each Windows frame applies size and centered position together in one native compositor transaction, reuses the captured monitor metrics, and is scheduled against the original transition deadline so frame work cannot accumulate into a slower cadence. A newer shell request invalidates an older native transition before it can write another frame.
+Primary transport uses a white disc with a dark glyph; secondary transport stays quiet. Segmented setting options use a neutral border at rest and invert to white when selected. Focus remains visible and selected, unavailable and pending states have semantic attributes. The settings arc/gear change is a finite response to interaction rather than idle animation.
 
-Content follows the established Widgets-Acrylic volume instead of racing the geometry: Compact reveals its cover/copy/actions after short 56–104ms offsets; Expanded releases header, body, controls, and footer in a 56–120ms sequence. The Compact-to-Expanded media path treats the cover as the shared visual anchor with a 236ms transform; collapse gives the Reef mark one short 120ms settle. Ordinary metadata and progress updates must not replay an entrance animation. `prefers-reduced-motion` shortens animations and transitions to a near-instant state change.
+### Inputs
 
-## Guardrails
+System volume and supported media seeking use native range inputs with a measured split fill, thumb and keyboard interaction. Unsupported playback commands remain disabled. Settings retain language, automatic/always-visible behavior, edge selection and fullscreen hiding.
 
-Do:
+### Motion
 
-- Preserve the three shell sizes, full-corner geometry, and top-center inset unless the native region and CSS are changed together.
-- Make one content hierarchy readable at a glance, with one primary action at most.
-- Reserve mint for Reef activity and keyboard focus; media playback itself is neutral black and white.
-- Keep theme changes in place without stealing focus or changing the user’s current panel.
+A single frame compositor evaluates the reference’s damped springs and shares each contour with the native region. Response values describe spring period, not fixed CSS durations: unfold uses 0.42 / 0.78 response/damping; content uses 0.36 / 0.82 with 45ms stagger capped at 180ms; detail glide uses 0.5 / 0.86; measured readings use 0.9 / 0.9. Content crossfades over 160ms. Geometry keeps its final stable rail position during detail changes.
 
-Do not:
+Codex refresh has a finite 950ms rotational response. Reduced motion settles geometry and readings directly, and normal polling does not restart entrance motion. Invisible outgoing content is inert and cannot intercept input.
 
-- Reintroduce edge attachment, lower-only corners, a full Widgets Board grid, or a visible rectangular host behind the Island.
-- Copy Apple product artwork, use a notch frame, or present Atoll as a macOS feature.
-- Add dashboard rows, timer surfaces, permanent motion, glow effects, or scrolling titles.
-- Change shell geometry in CSS without updating the native `SHELL_GEOMETRY` request and Windows region behavior.
+## Do's and Don'ts
+
+### Do:
+
+- **Do** derive shell geometry and ring proportions from the shared Codenotch constants.
+- **Do** retain upright labels, tabular changing values and source-specific unavailable states.
+- **Do** keep the detail tail aligned with the inspected module while preserving the rail position.
+- **Do** respect reduced motion and keep routine snapshots from replaying entrance animation.
+- **Do** preserve the Inset Cove mark, local data boundaries, Codex opt-in and complete recovery controls.
+
+### Don't:
+
+- **Don’t** restore Acrylic, decorative surface gradients, glow or a shadow gutter around the notch.
+- **Don’t** replace missing measurements with a filled ring, a fabricated percentage or an apparent zero.
+- **Don’t** turn ring color into a generic health score or battery-charge claim.
+- **Don’t** resize the native host separately from the shared frame compositor to animate shell states.
+- **Don’t** apply the shell’s flat-material rule to the existing authored application-icon artwork.

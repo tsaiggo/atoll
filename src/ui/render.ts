@@ -5,44 +5,49 @@ import {
   type MediaStatus,
 } from "../domain";
 import { copyFor, type UiLanguage } from "../i18n";
-import { icon } from "../icons";
-import { shellGeometryStyle } from "../shell/geometry";
-import { renderCompactShell } from "./compact";
-import { renderExpandedShell } from "./expanded";
+import { notchGeometry } from "../shell/geometry";
+import { renderNotch, updateNotchMediaProgress } from "./notch";
+import { prepareNotchMotion, presentNotchMotion, type FrameSink } from "./notch-motion";
 
-export function renderApp(root: HTMLElement, vm: AppViewModel): void {
-  const copy = copyFor(vm.settings.language);
+export function renderApp(root: HTMLElement, vm: AppViewModel, sink?: FrameSink): void {
   const focusedActionElement = root.querySelector<HTMLElement>("[data-action]:focus");
   const focusedAction = focusedActionElement?.dataset.action;
+  const focusedControl = root.querySelector<HTMLElement>("[data-control]:focus")?.dataset.control;
+  const previousPanel = root.dataset.panel;
+  const detailScroll = root.querySelector<HTMLElement>(".notch-detail")?.scrollTop ?? 0;
+  const sourceScroll = root.querySelector<HTMLElement>(".source-list")?.scrollTop ?? 0;
   const focusedActionValue = focusedActionElement?.dataset.value;
   const focusedInsideShell = Boolean(root.querySelector<HTMLElement>(":focus"));
+  prepareNotchMotion(root, vm);
   root.dataset.shell = vm.shell;
   root.dataset.content = vm.content;
+  root.dataset.edge = vm.settings.notchEdge;
+  root.dataset.panel = vm.expandedPanel;
   root.classList.toggle("motion-disabled", vm.motionDisabled);
   document.documentElement.lang = vm.settings.language;
 
   if (vm.shell === "hidden") {
     root.innerHTML = "";
+    presentNotchMotion(root, vm, sink);
     return;
   }
-  if (vm.shell === "reef") {
-    const motionClass = vm.animateContent ? " shell-entering" : "";
-    root.innerHTML = `
-      <button class="atoll-shell reef${motionClass}" ${shellGeometryStyle("reef")} type="button" aria-label="${copy.shell.openAtoll}">
-        <span class="reef__mark" aria-hidden="true">${icon("atoll")}</span>
-      </button>`;
-    if (focusedInsideShell) root.querySelector<HTMLElement>("button.reef")?.focus();
-    return;
-  }
-  if (vm.shell === "compact") {
-    root.innerHTML = renderCompactShell(vm);
-    const actionRestored = restoreFocusedAction(root, focusedAction, focusedActionValue);
-    if (!actionRestored && focusedInsideShell) restoreCompactFocus(root);
-    return;
-  }
-  root.innerHTML = renderExpandedShell(vm);
+  const geometry = notchGeometry(vm.shell, vm.settings.notchEdge, vm.expandedPanel);
+  root.style.width = `${geometry.width}px`;
+  root.style.height = `${geometry.height}px`;
+  root.innerHTML = renderNotch(vm);
+  presentNotchMotion(root, vm, sink);
   const actionRestored = restoreFocusedAction(root, focusedAction, focusedActionValue);
-  if (!actionRestored && focusedInsideShell) restoreExpandedFocus(root);
+  const controlTarget = focusedControl ? Array.from(root.querySelectorAll<HTMLElement>("[data-control]")).find(element => element.dataset.control === focusedControl) : undefined;
+  if (!actionRestored) controlTarget?.focus({ preventScroll: true });
+  if (previousPanel === vm.expandedPanel) {
+    const detail = root.querySelector<HTMLElement>(".notch-detail");
+    const sourceList = root.querySelector<HTMLElement>(".source-list");
+    if (detail) detail.scrollTop = detailScroll;
+    if (sourceList) sourceList.scrollTop = sourceScroll;
+  }
+  if (!actionRestored && !controlTarget && focusedInsideShell) {
+    root.querySelector<HTMLElement>("button.reef, [data-notch-panel], [data-action=collapse]")?.focus({ preventScroll: true });
+  }
 }
 
 export function updateMediaProgress(
@@ -54,6 +59,7 @@ export function updateMediaProgress(
   if (!media || media.durationMs === undefined || media.durationMs <= 0) return;
   const position = mediaPositionMs(media, now);
   const ratio = Math.min(1, Math.max(0, position / media.durationMs));
+  updateNotchMediaProgress(root, ratio);
   const progress = root.querySelector<HTMLElement>("[data-media-progress]");
   const seek = root.querySelector<HTMLInputElement>("[data-control='media-seek']");
   const elapsed = root.querySelector<HTMLElement>("[data-media-elapsed]");
@@ -88,16 +94,4 @@ function restoreFocusedAction(root: HTMLElement, action?: string, value?: string
     value === undefined ? actions[0] : actions.find((element) => element.dataset.value === value) ?? actions[0];
   target?.focus({ preventScroll: true });
   return Boolean(target);
-}
-
-function restoreCompactFocus(root: HTMLElement): void {
-  const target = root.querySelector<HTMLElement>("button.compact, .compact-media__open");
-  target?.focus({ preventScroll: true });
-}
-
-function restoreExpandedFocus(root: HTMLElement): void {
-  const target =
-    root.querySelector<HTMLElement>("[data-action='collapse']:not([disabled])") ??
-    root.querySelector<HTMLElement>("[data-action]:not([disabled])");
-  target?.focus({ preventScroll: true });
 }

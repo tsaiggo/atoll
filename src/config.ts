@@ -1,12 +1,18 @@
 import { normalizeLanguage, type UiLanguage } from "./i18n";
 
-// Keep this primitive local: config is deliberately importable in isolation by
-// the migration test harness. It mirrors shell/geometry.ts' 12 DIP host bleed.
-const ISLAND_TOP_MARGIN = -12;
+export type NotchEdge = "top" | "bottom" | "left" | "right";
+export type NotchVisibility = "auto" | "always";
 
 export interface AtollSettings {
   language: UiLanguage;
   hideInFullscreen: boolean;
+  // Codex usage is optional because enabling it starts a local Codex App
+  // Server child process. The user must make that choice from the Codex panel.
+  codexUsageEnabled: boolean;
+  notchEdge: NotchEdge;
+  notchVisibility: NotchVisibility;
+  // Kept for compatibility with older native settings payloads. Edge placement
+  // now owns positioning, so this retired offset is always neutral.
   topMargin: number;
 }
 
@@ -17,7 +23,10 @@ export const EXPANDED_AUTO_COLLAPSE_MS = 4000;
 export const DEFAULT_SETTINGS: AtollSettings = {
   language: "en",
   hideInFullscreen: true,
-  topMargin: ISLAND_TOP_MARGIN,
+  codexUsageEnabled: false,
+  notchEdge: "top",
+  notchVisibility: "auto",
+  topMargin: 0,
 };
 
 const SETTINGS_KEY = "atoll.settings.v1";
@@ -33,6 +42,14 @@ const RETIRED_SETTING_KEYS = [
   "topMargin",
 ] as const;
 
+export function normalizeNotchEdge(value: unknown): NotchEdge {
+  return value === "bottom" || value === "left" || value === "right" ? value : "top";
+}
+
+export function normalizeNotchVisibility(value: unknown): NotchVisibility {
+  return value === "always" ? "always" : "auto";
+}
+
 export function loadSettings(): AtollSettings {
   removeRetiredTimerState();
   try {
@@ -45,12 +62,21 @@ export function loadSettings(): AtollSettings {
         typeof parsed.hideInFullscreen === "boolean"
           ? parsed.hideInFullscreen
           : DEFAULT_SETTINGS.hideInFullscreen,
-      // The Status Island is deliberately fixed to one edge-attached anchor.
-      // Older releases persisted this as a user-adjustable offset, which can
-      // leave a migrated Island off its intended optical baseline.
-      topMargin: ISLAND_TOP_MARGIN,
+      codexUsageEnabled:
+        typeof parsed.codexUsageEnabled === "boolean"
+          ? parsed.codexUsageEnabled
+          : DEFAULT_SETTINGS.codexUsageEnabled,
+      notchEdge: normalizeNotchEdge(parsed.notchEdge),
+      notchVisibility: normalizeNotchVisibility(parsed.notchVisibility),
+      topMargin: 0,
     };
-    if (RETIRED_SETTING_KEYS.some((key) => key in parsed)) saveSettings(settings);
+    if (
+      RETIRED_SETTING_KEYS.some((key) => key in parsed) ||
+      parsed.notchEdge !== settings.notchEdge ||
+      parsed.notchVisibility !== settings.notchVisibility
+    ) {
+      saveSettings(settings);
+    }
     return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };

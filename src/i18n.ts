@@ -1,6 +1,27 @@
 export type UiLanguage = "en" | "zh-CN";
 
 export interface AppCopy {
+  readonly notch: {
+    readonly media: string;
+    readonly volume: string;
+    readonly energy: string;
+    readonly codex: string;
+    readonly openSettings: string;
+    readonly pin: string;
+    readonly unpin: string;
+    readonly pinned: string;
+    readonly placement: string;
+    readonly visibility: string;
+    readonly automatic: string;
+    readonly always: string;
+    readonly hint: string;
+    readonly edges: {
+      readonly top: string;
+      readonly bottom: string;
+      readonly left: string;
+      readonly right: string;
+    };
+  };
   readonly shell: {
     readonly quickControls: string;
     readonly openAtoll: string;
@@ -92,6 +113,37 @@ export interface AppCopy {
     readonly historyEntry: (date: string, value: string, unit: string, partial: boolean) => string;
     readonly historyMissingEntry: (date: string) => string;
   };
+  readonly codex: {
+    readonly title: string;
+    readonly subtitle: string;
+    readonly openUsage: string;
+    readonly enableTitle: string;
+    readonly enableDetail: string;
+    readonly enable: string;
+    readonly disable: string;
+    readonly checkingTitle: string;
+    readonly checkingDetail: string;
+    readonly noWindowTitle: string;
+    readonly noWindowDetail: string;
+    readonly signedOutTitle: string;
+    readonly signedOutDetail: string;
+    readonly unsupportedAuthTitle: string;
+    readonly unsupportedAuthDetail: string;
+    readonly cliMissingTitle: string;
+    readonly cliMissingDetail: string;
+    readonly unavailableTitle: string;
+    readonly unavailableDetail: string;
+    readonly protocolErrorTitle: string;
+    readonly protocolErrorDetail: string;
+    readonly refresh: string;
+    readonly refreshing: string;
+    readonly usagePercent: (value: string) => string;
+    readonly resetIn: (value: string) => string;
+    readonly resetUnknown: string;
+    readonly windowFallback: (minutes: number) => string;
+    readonly secondarySummary: (label: string, usedPercent: string, reset: string) => string;
+    readonly sourcePrivacy: string;
+  };
   readonly settings: {
     readonly title: string;
     readonly subtitle: string;
@@ -102,6 +154,22 @@ export interface AppCopy {
 }
 
 const EN: AppCopy = {
+  notch: {
+    media: "Media",
+    volume: "Volume",
+    energy: "Battery discharge",
+    codex: "Codex",
+    openSettings: "Open notch settings",
+    pin: "Keep this panel open",
+    unpin: "Unpin this panel",
+    pinned: "Pinned",
+    placement: "Screen edge",
+    visibility: "Status rail",
+    automatic: "On hover",
+    always: "Always visible",
+    hint: "Hover to reveal. Click the empty notch area to pin or unpin.",
+    edges: { top: "Top", bottom: "Bottom", left: "Left", right: "Right" },
+  },
   shell: {
     quickControls: "Atoll quick controls",
     openAtoll: "Open Atoll",
@@ -192,9 +260,44 @@ const EN: AppCopy = {
       `${date}: ${value} ${unit}${partial ? ", partial record" : ""}`,
     historyMissingEntry: (date) => `${date}: no record`,
   },
+  codex: {
+    title: "Codex",
+    subtitle: "Local usage",
+    openUsage: "Open Codex usage",
+    enableTitle: "Use Codex usage in Atoll?",
+    enableDetail: "Enable a local check of your usage windows and reset times.",
+    enable: "Enable",
+    disable: "Turn off",
+    checkingTitle: "Checking Codex usage…",
+    checkingDetail: "Reading the local Codex App Server.",
+    noWindowTitle: "No Codex usage window",
+    noWindowDetail: "Codex didn’t report a usage window you can display.",
+    signedOutTitle: "Sign in to Codex",
+    signedOutDetail: "Atoll can read usage after the local Codex CLI is signed in.",
+    unsupportedAuthTitle: "This Codex sign-in isn’t supported",
+    unsupportedAuthDetail: "Use a supported Codex account, then refresh.",
+    cliMissingTitle: "Codex CLI not found",
+    cliMissingDetail: "Install Codex, then enable usage here.",
+    unavailableTitle: "Codex usage unavailable",
+    unavailableDetail: "Try refreshing the local Codex connection.",
+    protocolErrorTitle: "Codex needs an update",
+    protocolErrorDetail: "The local Codex protocol couldn’t be read.",
+    refresh: "Refresh",
+    refreshing: "Refreshing…",
+    usagePercent: (value) => `${value}% used`,
+    resetIn: (value) => `Resets in ${value}`,
+    resetUnknown: "Reset time unavailable",
+    windowFallback: (minutes) =>
+      minutes % 60 === 0
+        ? `${minutes / 60}-hour window`
+        : `${minutes}-minute window`,
+    secondarySummary: (label, usedPercent, reset) =>
+      `${label} · ${usedPercent}% used · ${reset}`,
+    sourcePrivacy: "Local App Server only · no prompts, files, account IDs, or API keys",
+  },
   settings: {
     title: "Settings",
-    subtitle: "Theme and motion follow Windows",
+    subtitle: "Placement and visibility",
     language: "Language",
     fullscreen: "In full screen",
     fullscreenDetail: "Hide Atoll automatically",
@@ -202,6 +305,22 @@ const EN: AppCopy = {
 };
 
 const ZH_CN: AppCopy = {
+  notch: {
+    media: "媒体",
+    volume: "音量",
+    energy: "电池放电",
+    codex: "Codex",
+    openSettings: "打开刘海设置",
+    pin: "保持面板展开",
+    unpin: "取消固定面板",
+    pinned: "已固定",
+    placement: "屏幕边缘",
+    visibility: "状态栏",
+    automatic: "悬停显示",
+    always: "始终显示",
+    hint: "悬停展开，点击边栏空白处可固定或取消固定。",
+    edges: { top: "顶部", bottom: "底部", left: "左侧", right: "右侧" },
+  },
   shell: {
     quickControls: "Atoll 快捷控制",
     openAtoll: "打开 Atoll",
@@ -291,9 +410,40 @@ const ZH_CN: AppCopy = {
       `${date}：${value} ${unit}${partial ? "，部分记录" : ""}`,
     historyMissingEntry: (date) => `${date}：暂无记录`,
   },
+  codex: {
+    title: "Codex",
+    subtitle: "本机用量",
+    openUsage: "打开 Codex 用量",
+    enableTitle: "要在 Atoll 中使用 Codex 用量吗？",
+    enableDetail: "启用后，Atoll 会在本机读取用量窗口与重置时间。",
+    enable: "启用",
+    disable: "关闭",
+    checkingTitle: "正在读取 Codex 用量…",
+    checkingDetail: "正在读取本机 Codex App Server。",
+    noWindowTitle: "没有可显示的 Codex 用量窗口",
+    noWindowDetail: "Codex 未返回可供显示的用量窗口。",
+    signedOutTitle: "请先登录 Codex",
+    signedOutDetail: "本机 Codex CLI 登录后，Atoll 才能读取用量。",
+    unsupportedAuthTitle: "当前 Codex 登录方式暂不支持",
+    unsupportedAuthDetail: "请使用受支持的 Codex 账户后刷新。",
+    cliMissingTitle: "未找到 Codex CLI",
+    cliMissingDetail: "安装 Codex 后，再在这里启用用量显示。",
+    unavailableTitle: "Codex 用量暂不可用",
+    unavailableDetail: "请刷新本机 Codex 连接后重试。",
+    protocolErrorTitle: "Codex 需要更新",
+    protocolErrorDetail: "无法读取本机 Codex 协议。",
+    refresh: "刷新",
+    refreshing: "正在刷新…",
+    usagePercent: (value) => `已用 ${value}%`,
+    resetIn: (value) => `${value}后重置`,
+    resetUnknown: "重置时间暂不可用",
+    windowFallback: (minutes) => `${minutes} 分钟窗口`,
+    secondarySummary: (label, usedPercent, reset) => `${label} · 已用 ${usedPercent}% · ${reset}`,
+    sourcePrivacy: "仅本机 App Server · 不读取提示词、文件、账户 ID 或 API 密钥",
+  },
   settings: {
     title: "设置",
-    subtitle: "主题和动效跟随 Windows",
+    subtitle: "停靠与显示",
     language: "语言",
     fullscreen: "全屏时",
     fullscreenDetail: "自动隐藏 Atoll",
