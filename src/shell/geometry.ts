@@ -44,6 +44,19 @@ export function canonicalNotch(depth: number, length: number): Point[] {
 export function pathFor(points: Point[]): string {
   const area = points.reduce((sum,p,i)=>{ const n=points[(i+1)%points.length]; return sum+p.x*n.y-n.x*p.y; },0);
   const contour = area < 0 ? [...points].reverse() : points;
+  // These contours consist of four sampled quarter circles. Paint true SVG
+  // arcs while retaining the bounded point samples for native hit testing.
+  if (contour.length === 52) {
+    let path = "";
+    for (let i=0;i<4;i++) {
+      const a=contour[i*13], mid=contour[i*13+6], b=contour[i*13+12];
+      const radius=Math.hypot(b.x-a.x,b.y-a.y)/Math.SQRT2;
+      const sweep=(mid.x-a.x)*(b.y-mid.y)-(mid.y-a.y)*(b.x-mid.x)>0?1:0;
+      path+=`${i?" L":"M"}${a.x.toFixed(3)},${a.y.toFixed(3)} `;
+      path+=radius>0.001?`A${radius.toFixed(3)},${radius.toFixed(3)} 0 0 ${sweep} ${b.x.toFixed(3)},${b.y.toFixed(3)}`:`L${b.x.toFixed(3)},${b.y.toFixed(3)}`;
+    }
+    return path+" Z";
+  }
   return contour.map((p,i)=>`${i?"L":"M"}${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(" ")+" Z";
 }
 export function notchGeometry(state: Exclude<ShellState,"hidden">, edge: NotchEdge="top", panelKey="home"): NotchGeometry {

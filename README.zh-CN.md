@@ -136,7 +136,9 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 实现采用原仓库的 44/117 比例、圆角优先的圆弧轮廓、直立圆环排布、气泡宽度、颜色阈值和弹簧参数。轮廓在固定尺寸内容外展开；同一动画帧也生成 Windows 命中区域。设置、媒体、音量和耗电控制属于 Atoll 的功能扩展。
 
-Windows 使用 Segoe UI 与 WebView2，原版使用 SF Pro 与 SwiftUI；曲线以每四分之一圆弧 12 段采样，同时用于 SVG 与 Win32，所以字体度量和像素渲染存在细微差别。气泡尾部遵循源码中的三角形，设计 PNG 的连接处则是曲线。详情见[复刻与验证记录](docs/codenotch-fidelity.md)和[上游声明](THIRD_PARTY_NOTICES.md)。
+Windows 使用 Segoe UI 与 WebView2，原版使用 SF Pro 与 SwiftUI；SVG 绘制真实圆弧，Win32 每四分之一圆弧采用 12 段采样，并向外留出 2 个物理像素保护抗锯齿边缘。气泡尾部遵循源码中的三角形，设计 PNG 的连接处则是曲线。详情见[复刻与验证记录](docs/codenotch-fidelity.md)和[上游声明](THIRD_PARTY_NOTICES.md)。
+
+需要直接运行的优化版 EXE 时，执行 `pnpm tauri build --no-bundle`，打开 `src-tauri/target/release/atoll.exe`。Windows 构建（包括调试版）均使用 GUI 子系统，双击启动不再创建控制台窗口。
 
 ## 构建 Windows 安装包
 

@@ -42,6 +42,7 @@ export interface NativeEventHandlers {
   onVolume(payload: NativeVolumePayload): void;
   onFullscreenChanged(payload: { fullscreen: boolean }): void;
   onShellSettled(payload: NativeShellSettledPayload): void;
+  onPointerPresence(inside: boolean): void;
 }
 
 export const nativeRuntime = Boolean(window.__TAURI_INTERNALS__);
@@ -124,6 +125,7 @@ export function setNativeSystemMute(muted: boolean): Promise<boolean> {
 
 export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<UnlistenFn[]> {
   return Promise.all([
+    listen<boolean>("atoll-pointer-presence", ({ payload }) => handlers.onPointerPresence(payload)),
     listen<string>("atoll-action", ({ payload }) => handlers.onAction(payload)),
     listen<NativeCodexUsagePayload>("codex-usage-update", ({ payload }) =>
       handlers.onCodexUsage(payload),

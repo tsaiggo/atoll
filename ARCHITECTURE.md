@@ -142,7 +142,9 @@ Tauri 调用参数在 TypeScript 中使用 camelCase，例如 `sessionRevision`�
 
 `ui/notch-motion.ts` 只持有展示插值，不另建业务状态。`shell/motion.ts` 计算源弹簧：展开 .42/.78，内容 .36/.82（每项延迟45ms，最多180ms），气泡 .5/.86，读数 .9/.9；交叉淡化160ms。response 是固有周期，不是持续时间。重绘从当前几何继续，内容保持完整排版、通过动态轮廓裁切；退出的内容只以 inert 副本短暂保留。降低动态效果偏好跳过插值。
 
-每一帧先经 `platform/native.ts` 送入 `set_window_shell(animated:false)`，再绘制同一轮廓；Rust 不再作为这条路径的第二个动画时钟。共享多边形按实际 DPI 转换，通过 `CreatePolygonRgn` 与 `CombineRgn(RGN_OR)` 合成 HRGN。面板、状态栏和设置之间仅保留狭窄的指针通道；透明宿主的其余空间不接收点击。Win32 用 `SW_SHOWNOACTIVATE` 展示并保留 `WS_EX_NOACTIVATE` / `WS_EX_TOOLWINDOW`，避免通用 show 路径改写窗口样式。
+Windows 每 100 毫秒读取真实鼠标位置与当前 HRGN，发布 `atoll-pointer-presence`，补齐 WebView2 离开异形窗口时可能漏发的 DOM 事件；固定和正在操作的面板继续受保护。动画过程中原位更新 SVG 命中节点，避免逐帧替换节点造成虚假的进出事件。
+
+每一帧先经 `platform/native.ts` 送入 `set_window_shell(animated:false)`，再绘制同一轮廓；Rust 不再作为这条路径的第二个动画时钟。同尺寸、同边缘且可见时只更新区域，跳过重复显示、移动、监视器查询和 DWM 设置。SVG 使用真实圆弧与固定 DIP 画布，避免被 WebView 取整尺寸拉伸；共享采样按实际 DPI 转换，通过 `CreatePolygonRgn` 与 `CombineRgn(RGN_OR)` 合成 HRGN，并向外留出 2 个物理像素的抗锯齿空间。面板、状态栏和设置之间仅保留狭窄的指针通道；透明宿主的其余空间不接收点击。Win32 用 `SW_SHOWNOACTIVATE` 展示并保留 `WS_EX_NOACTIVATE` / `WS_EX_TOOLWINDOW`，避免通用 show 路径改写窗口样式。
 
 原生宿主以主显示器 **工作区** 定位，依据所选边缘居中；工作区包含任务栏避让。显示器、缩放、工作区或任务栏布局变化后，原生 watcher 用当前边缘和共享区域恢复定位。外壳使用不透明纯黑材质，不再启用或脉冲刷新 Acrylic。设计来源与上游声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 

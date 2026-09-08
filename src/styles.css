@@ -2723,7 +2723,9 @@ button.setting-row:hover {
 .notch-settings__disc .icon { width: 21.06px; height: 21.06px; }
 .notch-settings:is(:hover,:focus-visible,[aria-expanded="true"]) .notch-settings__arc { opacity: 0; }
 .notch-settings:is(:hover,:focus-visible,[aria-expanded="true"]) .notch-settings__disc { opacity: 1; transform: none; }
-.native-runtime #app { inset: 0; transform: none; width: 100% !important; height: 100% !important; }
+/* Keep the measured DIP canvas. Stretching it to WebView2's rounded client
+   dimensions shifts curved edges away from the native mask at fractional DPI. */
+.native-runtime #app { inset: 0; transform: none; }
 .native-runtime #app[data-geometry-pending] .notch-rail,
 .native-runtime #app[data-geometry-pending] .notch-detail,
 .native-runtime #app[data-geometry-pending] .notch-settings { pointer-events: none; }

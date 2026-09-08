@@ -1,0 +1,25 @@
+import {createRequire} from 'node:module';
+import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
+const require=createRequire(import.meta.url);
+const {chromium}=require(process.env.ATOLL_PLAYWRIGHT_MODULE||'playwright');
+const browser=await chromium.connectOverCDP('http://127.0.0.1:9238');
+const page=browser.contexts()[0].pages()[0];
+await page.waitForSelector('#app');
+await page.evaluate(()=>{ const key='atoll.settings.v1';const settings=JSON.parse(localStorage.getItem(key)||'{}');localStorage.setItem(key,JSON.stringify({...settings,hideInFullscreen:false,notchVisibility:'auto'})); });
+await page.reload();await page.waitForSelector('.reef');
+const report=await page.evaluate(async()=>{
+ const wait=ms=>new Promise(r=>setTimeout(r,ms));
+ document.querySelector('[data-action=collapse]')?.click();await wait(900);
+ const samples=[];const start=performance.now();let previous='';
+ const observer=new MutationObserver(()=>{const path=document.querySelector('.notch-outline')?.getAttribute('d');if(path&&path!==previous){samples.push(performance.now()-start);previous=path;}});
+ observer.observe(document.querySelector('#app'),{subtree:true,attributes:true,attributeFilter:['d']});
+ document.querySelector('.reef').click();
+ await wait(850);observer.disconnect();
+ const intervals=samples.slice(1).map((t,i)=>t-samples[i]);
+ const sorted=[...intervals].sort((a,b)=>a-b);
+ return {frames:samples.length,median:sorted[Math.floor(sorted.length*.5)],p95:sorted[Math.floor(sorted.length*.95)],max:Math.max(...intervals),samples,shell:document.querySelector('#app').dataset.shell};
+});
+assert.ok(report.frames>=8,'capture a real animated opening rather than a hidden or static window');
+assert.equal(report.shell,'compact');
+await writeFile(process.env.ATOLL_PERF_REPORT||'artifacts/codenotch/native-performance.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report));await browser.close();

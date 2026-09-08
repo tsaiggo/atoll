@@ -11,6 +11,8 @@ use tauri::{LogicalPosition, LogicalSize};
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::HWND;
 
+#[cfg(target_os = "windows")]
+use crate::runtime::update_shell_dark_mode;
 use crate::runtime::{
     is_current_transition, lock_window_mutation, next_transition_epoch, set_shell_layout,
     shell_layout, NotchEdge, RuntimeState, ShellLayout, ShellRegion,
@@ -213,6 +215,57 @@ pub fn start_display_watcher(app: AppHandle) {
     });
 }
 
+// Leaving an HRGN can stop WebView2 mouse delivery before it sends a DOM
+// pointerleave. Reconcile against the real desktop cursor and installed region.
+pub fn start_pointer_watcher(app: AppHandle) {
+    #[cfg(target_os = "windows")]
+    thread::spawn(move || loop {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Ok(inside) = cursor_inside_window(&window) {
+                let _ = window.emit("atoll-pointer-presence", inside);
+            }
+        }
+        thread::sleep(Duration::from_millis(100));
+    });
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+}
+
+#[cfg(target_os = "windows")]
+fn cursor_inside_window(window: &WebviewWindow) -> Result<bool, String> {
+    use windows::Win32::{
+        Foundation::{POINT, RECT},
+        Graphics::Gdi::{CreateRectRgn, DeleteObject, GetWindowRgn, PtInRegion},
+        UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect, IsWindowVisible},
+    };
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() {
+            return Ok(false);
+        }
+        let mut cursor = POINT::default();
+        let mut rect = RECT::default();
+        GetCursorPos(&mut cursor).map_err(|e| e.to_string())?;
+        GetWindowRect(hwnd, &mut rect).map_err(|e| e.to_string())?;
+        if cursor.x < rect.left
+            || cursor.x >= rect.right
+            || cursor.y < rect.top
+            || cursor.y >= rect.bottom
+        {
+            return Ok(false);
+        }
+        let region = CreateRectRgn(0, 0, 0, 0);
+        if region.is_invalid() {
+            return Err("Unable to inspect cursor region".to_string());
+        }
+        let kind = GetWindowRgn(hwnd, region);
+        let inside =
+            kind.0 > 0 && PtInRegion(region, cursor.x - rect.left, cursor.y - rect.top).as_bool();
+        let _ = DeleteObject(region.into());
+        Ok(inside)
+    }
+}
+
 struct ShellRequest {
     shell: String,
     layout: ShellLayout,
@@ -313,6 +366,8 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         let runtime = window.state::<RuntimeState>();
         let _mutation = lock_window_mutation(&runtime);
         let epoch = next_transition_epoch(&runtime);
+        #[cfg(target_os = "windows")]
+        let previous = shell_layout(&runtime);
         set_shell_layout(&runtime, layout.clone());
         if shell == "hidden" {
             window.hide().map_err(|error| error.to_string())?;
@@ -320,10 +375,40 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         }
 
         #[cfg(target_os = "windows")]
-        apply_dwm_frame_policy(
-            window.hwnd().map_err(|error| error.to_string())?,
-            !theme.eq_ignore_ascii_case("light"),
-        );
+        {
+            use windows::Win32::{
+                Foundation::RECT,
+                UI::WindowsAndMessaging::{GetWindowRect, IsWindowVisible},
+            };
+            let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+            let dark = !theme.eq_ignore_ascii_case("light");
+            if update_shell_dark_mode(&runtime, dark) {
+                apply_dwm_frame_policy(hwnd, dark);
+            }
+            // The compositor keeps one host size throughout a fold/glide. A
+            // frame only changes its region: no monitor query, window sizing,
+            // ShowWindow, or redundant settled event on the UI thread.
+            if !animated
+                && previous.as_ref().is_some_and(|old| {
+                    old.width == layout.width
+                        && old.height == layout.height
+                        && old.edge == layout.edge
+                })
+                && unsafe { IsWindowVisible(hwnd).as_bool() }
+            {
+                let mut rect = RECT::default();
+                unsafe {
+                    GetWindowRect(hwnd, &mut rect).map_err(|error| error.to_string())?;
+                    apply_window_region(
+                        hwnd,
+                        rect.right - rect.left,
+                        rect.bottom - rect.top,
+                        &layout,
+                    )?;
+                }
+                return Ok(());
+            }
+        }
         #[cfg(not(target_os = "windows"))]
         let _ = theme;
 
@@ -651,8 +736,8 @@ unsafe fn apply_window_region(
     use windows::Win32::{
         Foundation::POINT,
         Graphics::Gdi::{
-            CombineRgn, CreatePolygonRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_ERROR,
-            RGN_OR, WINDING,
+            CombineRgn, CreatePolygonRgn, CreateRectRgn, DeleteObject, OffsetRgn, SetWindowRgn,
+            RGN_COPY, RGN_ERROR, RGN_OR, WINDING,
         },
     };
     if physical_width <= 0 || physical_height <= 0 {
@@ -684,6 +769,39 @@ unsafe fn apply_window_region(
             let _ = DeleteObject(region.into());
             return Err("Unable to combine Atoll polygon regions".to_string());
         }
+    }
+    // HRGN is a binary pixel mask. Clipping at the exact rounded sample removes
+    // WebView2's antialiased fringe and produces staircase edges. Keep two
+    // physical pixels of transparent breathing room around the input contour.
+    let fringe = CreateRectRgn(0, 0, 0, 0);
+    let shifted = CreateRectRgn(0, 0, 0, 0);
+    if fringe.is_invalid() || shifted.is_invalid() {
+        let _ = DeleteObject(fringe.into());
+        let _ = DeleteObject(shifted.into());
+        let _ = DeleteObject(region.into());
+        return Err("Unable to create the contour antialias margin".to_string());
+    }
+    let mut margin_ok = CombineRgn(Some(fringe), Some(region), None, RGN_COPY) != RGN_ERROR;
+    for (dx, dy) in [
+        (-2, -2),
+        (0, -2),
+        (2, -2),
+        (-2, 0),
+        (2, 0),
+        (-2, 2),
+        (0, 2),
+        (2, 2),
+    ] {
+        margin_ok &= CombineRgn(Some(shifted), Some(region), None, RGN_COPY) != RGN_ERROR;
+        margin_ok &= OffsetRgn(shifted, dx, dy) != RGN_ERROR;
+        margin_ok &= CombineRgn(Some(fringe), Some(fringe), Some(shifted), RGN_OR) != RGN_ERROR;
+    }
+    margin_ok &= CombineRgn(Some(region), Some(fringe), None, RGN_COPY) != RGN_ERROR;
+    let _ = DeleteObject(fringe.into());
+    let _ = DeleteObject(shifted.into());
+    if !margin_ok {
+        let _ = DeleteObject(region.into());
+        return Err("Unable to preserve the contour antialias margin".to_string());
     }
     // The OS owns the HRGN after success. On failure we still own and free it.
     // Unused transparent host space remains outside this union and click-through.

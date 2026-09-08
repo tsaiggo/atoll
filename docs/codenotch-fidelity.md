@@ -16,7 +16,7 @@ The accepted target is a faithful port of Codenotch's UI, interaction and motion
 
 | Requirement | Delivered implementation and evidence |
 | --- | --- |
-| Edge silhouette, curls and corners | `src/shell/codenotch.ts` centralizes the source 44/117 scale. `geometry.ts` preserves corner-first clamping and circular shoulders. SVG paint and Win32 regions share the sampled contour. |
+| Edge silhouette, curls and corners | `src/shell/codenotch.ts` centralizes the source 44/117 scale. `geometry.ts` preserves corner-first clamping and circular shoulders. SVG arcs and sampled Win32 regions derive from the same contour; the native mask leaves a two-physical-pixel antialias fringe. |
 | Rings and compact layout | 44 DIP rings, 5.83 track, 3.01 progress, 17.30 glyph; source gaps and separate upright side/horizontal pitches. Four Atoll modules use the same formula. |
 | Details and settings handle | Common width 225.64 DIP, corner 18.62, inset 12.03; source triangular tail and gap. The settings arc becomes a gear on hover. |
 | Fold/unfold | A fixed transparent host holds full-size content while the silhouette changes. One compositor updates native regions and SVG frames; it no longer resizes the host before revealing content. |
@@ -35,7 +35,7 @@ The accepted target is a faithful port of Codenotch's UI, interaction and motion
 - State coverage: 16 English/Chinese cases across Codex disabled/checking/unavailable/signed-out/ready, missing media/energy and muted volume; no detail overflow.
 - Visual review: independent review followed by one final batch of 20 screenshots (four edges, five views). Corrected energy legend truncation and excess settings/Codex whitespace. Evidence: `artifacts/codenotch/final/`; report: `browser-report.json` in that directory.
 - Other reports: `artifacts/codenotch/motion-report.json`, `state-report.json`, `native-report.json`.
-- Native executable: `src-tauri/target/debug/atoll.exe`, built with `pnpm tauri build --debug --no-bundle` and tested through its embedded WebView2 rather than the development browser.
+- Native executable: `src-tauri/target/release/atoll.exe`, built with `pnpm tauri build --no-bundle` and tested through its embedded WebView2 rather than the development browser.
 - Native hardware: one 3840 × 2160 display at 150%, work area 3840 × 2088. All four edges passed centering/anchoring, actual region hit probes, transparent-corner exclusion and window policy. The foreground window remained outside Atoll. A Wry show call that removed the tool-window flag was replaced with Windows `SW_SHOWNOACTIVATE` and explicit style preservation.
 
 ## Reproduce
@@ -61,8 +61,19 @@ Representative review screenshots (labeled synthetic preview data):
 [bottom settings](images/codenotch/bottom-settings.png).
 
 - Windows uses Segoe UI/WebView2 instead of macOS SF/SwiftUI. Label line height is 17 DIP; text rasterization and spring frame scheduling can differ. This is not a claim of identical pixels or identical native physics under every interruption.
-- SVG and native regions approximate each quarter circle with 12 segments (less than 0.1 DIP geometric deviation at the source radius). Shared samples keep paint and input boundaries consistent.
+- SVG paints true circular arcs. Native regions approximate each quarter circle with 12 segments (less than 0.1 DIP geometric deviation at the source radius) plus a two-physical-pixel outward margin to preserve antialiasing.
 - Atoll has four functional modules instead of the reference screenshot's three providers. Media, volume and energy controls are Atoll extensions. Settings is 360 × 320 DIP; Home/Sources is 300 × 210; common details retain source width with content-specific heights.
 - The folded pill wake band, settings hot zone and narrow inter-surface pointer corridors intentionally accept input beyond painted pixels. Other transparent host space passes through.
 - Native runtime verification covers this single 150% display. Other scales and negative-coordinate/work-area cases have automated coverage, but physical multi-monitor transitions were not exercised. Browser DPR is not a substitute for those hardware checks.
 - Screenshots use explicitly labeled synthetic preview data. Native smoke verifies the shell and consent defaults; it does not certify every third-party player's behavior or enable a real Codex account.
+
+## Post-merge runtime corrections
+
+The initial native checks validated interior hits and placement but missed antialias clipping and lost pointer-leave events. The regression checks now include:
+
+- `verify-notch-native.mjs`: probes just beyond painted contour samples as well as interior hits, transparent space, all four work-area edges and window styles. The two-pixel native fringe and removal of fractional-DPI canvas stretching address the observed edge clipping.
+- `verify-notch-native-pointer.mjs`: observes real native outside-cursor events, synthesizes entry and suppresses DOM exit events. All four edges return to Reef. The system cursor remains untouched; this is not a claim of physical mouse movement testing. Native cursor movement was unavailable in this execution environment.
+- `verify-notch-native-performance.mjs`: records actual outline mutations in the embedded WebView. An optimized-build opening produced 45 distinct contour frames, a 16.6 ms median frame gap and 18.3 ms p95 on this machine. These are a local sample, not a cross-device performance guarantee. Same-host frames now avoid repeated monitor queries, sizing, show calls and DWM policy updates.
+- The Windows executable uses the GUI subsystem in both debug and release builds. The optimized executable's PE subsystem was checked as 2 (Windows GUI). Codex child processes already use `CREATE_NO_WINDOW`.
+
+These native scripts require the isolated CDP test setup described above. The performance and pointer scripts adjust placement/fullscreen preferences in that test profile; do not point them at a personal profile.

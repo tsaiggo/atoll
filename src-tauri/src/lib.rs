@@ -39,6 +39,7 @@ pub fn run() {
             volume::start_watcher(app.handle().clone());
             fullscreen::start_watcher(app.handle().clone());
             shell::start_display_watcher(app.handle().clone());
+            shell::start_pointer_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

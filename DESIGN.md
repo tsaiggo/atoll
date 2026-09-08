@@ -148,11 +148,11 @@ Settings and management dimensions are intentional Atoll extensions. Overflow re
 
 The notch and its details have no surface shadow, Acrylic, backdrop blur or ornamental gradient. Black contours, the gap around the tail and a small neutral control vocabulary establish separation from the desktop. A range’s split fill encodes its measured value; it is not a decorative material gradient.
 
-**The Shared Contour Rule.** SVG paint and the Windows input region consume the same sampled geometry on each animation frame. Transparent host space remains click-through except for the narrow pointer corridors.
+**The Shared Contour Rule.** SVG paint and the Windows input region derive from the same geometry on each animation frame. SVG paints true arcs; the sampled native mask includes a two-physical-pixel antialias margin. Transparent host space remains click-through except for this fringe and intentional pointer corridors/hot zones.
 
 ## Shapes
 
-Inverse edge curls and outer corners derive from the reference’s circular arcs. The same sampled polygons drive SVG and Win32 clipping. Rounded detail corners and the triangular tail belong to one continuous black painted surface. Do not replace the shared contours with unrelated border-radius approximations.
+Inverse edge curls and outer corners derive from the reference’s circular arcs. SVG uses arc commands and Win32 uses bounded samples with antialias breathing room. Keep the measured DIP canvas instead of stretching it to rounded WebView client dimensions. Rounded detail corners and the triangular tail belong to one continuous black painted surface.
 
 Status rings have a complete neutral track and a thinner measured signal with round endpoints. Settings rests as a quarter arc and becomes a black disc with a white gear on hover or keyboard focus.
 

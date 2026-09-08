@@ -291,7 +291,7 @@
       },
       {
         "name": "The Shared Contour Rule",
-        "body": "SVG paint and the Windows input region consume the same sampled geometry on each animation frame. Transparent host space remains click-through except for the narrow pointer corridors.",
+        "body": "SVG paint and the Windows input region derive from the same geometry on each animation frame. SVG paints true arcs; the sampled native mask includes a two-physical-pixel antialias margin. Transparent host space remains click-through except for this fringe and intentional pointer corridors/hot zones.",
         "section": "elevation"
       }
     ],

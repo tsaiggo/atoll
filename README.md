@@ -136,7 +136,9 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 The implementation ports the source measurements at 44/117 scale, its corner-first circular contour, upright ring layout, tooltip width, palette thresholds and spring parameters. Shapes unfold over fixed-size content inside a transparent host; the same frame supplies the Windows hit region. Settings and media/volume/energy controls are Atoll extensions.
 
-Windows uses Segoe UI and WebView2 instead of SF Pro and SwiftUI. Curves are sampled into the common SVG/Win32 polygons (12 segments per quarter arc), so rasterization and font metrics can differ slightly. The source implementation’s triangular tooltip tail is retained even though the design PNG shows a curved join. This is a faithful design port, not a claim of identical platform pixels. See [fidelity evidence](docs/codenotch-fidelity.md) and [upstream notices](THIRD_PARTY_NOTICES.md).
+Windows uses Segoe UI and WebView2 instead of SF Pro and SwiftUI. SVG paints true arcs; the native region uses 12 samples per quarter arc plus a two-physical-pixel antialias margin. The source implementation’s triangular tooltip tail is retained even though the design PNG shows a curved join. This is a faithful design port, not a claim of identical platform pixels. See [fidelity evidence](docs/codenotch-fidelity.md) and [upstream notices](THIRD_PARTY_NOTICES.md).
+
+For a directly runnable optimized executable, use `pnpm tauri build --no-bundle` and open `src-tauri/target/release/atoll.exe`. Windows builds use the GUI subsystem, including debug builds, so desktop launches do not allocate a console window.
 
 ## Build a Windows installer
 

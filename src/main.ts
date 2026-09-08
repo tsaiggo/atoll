@@ -251,6 +251,11 @@ async function startApplication(): Promise<void> {
         reconcilePresentation();
       },
       onShellSettled: () => {},
+      onPointerPresence: (inside) => {
+        if (shell === "hidden") return;
+        if (inside && !pointerInside) onNotchEnter();
+        else if (!inside && pointerInside) onNotchLeave();
+      },
     }).catch((error: unknown) => {
       console.warn("Atoll event bridge unavailable", error);
       return null;
