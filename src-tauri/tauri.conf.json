@@ -15,8 +15,8 @@
         "label": "main",
         "title": "Atoll",
         "additionalBrowserArgs": "--enable-gpu --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection",
-        "width": 96,
-        "height": 44,
+        "width": 80,
+        "height": 10,
         "minWidth": 1,
         "minHeight": 1,
         "center": false,
@@ -54,7 +54,9 @@
     ],
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico"
       }
     }
   }

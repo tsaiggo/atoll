@@ -1,7 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <rect width="1024" height="1024" rx="279" fill="#07090D"/>
-  <rect x="6" y="6" width="1012" height="1012" rx="273" fill="none" stroke="#202832" stroke-width="12"/>
-  <g transform="translate(186.1818 186.1818) scale(4.072727)">
-    <path fill="#7AE4D4" fill-rule="evenodd" clip-rule="evenodd" d="M80 14C46 14 20 41 20 80C20 119 46 146 80 146C114 146 140 119 140 80C140 68 139 58 135 49C130 49 122 49 116 53C112 55 110 58 108 61C107 46 108 30 112 17C102 15 92 14 80 14Z M70 55C55 55 45 66 45 81C45 96 55 107 70 107C85 107 95 96 95 81C95 66 85 55 70 55Z"/>
+  <defs>
+    <linearGradient id="plate" x1="184" y1="82" x2="840" y2="952" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#292D34"/>
+      <stop offset="0.5" stop-color="#171A1F"/>
+      <stop offset="1" stop-color="#0D0F12"/>
+    </linearGradient>
+    <linearGradient id="reef" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#A9F3E8"/>
+      <stop offset="1" stop-color="#67CDBE"/>
+    </linearGradient>
+  </defs>
+  <rect x="40" y="40" width="944" height="944" rx="252" fill="url(#plate)"/>
+  <path d="M190 142C350 75 674 70 842 151" fill="none" stroke="#FFFFFF" stroke-opacity="0.055" stroke-width="10" stroke-linecap="round"/>
+  <g transform="translate(152 152) scale(4.5)">
+    <path fill="url(#reef)" fill-rule="evenodd" clip-rule="evenodd" d="M80 11C40 11 13 42 13 80C13 121 41 149 80 149C120 149 147 119 147 79C147 64 144 51 139 41C128 40 118 43 110 49C102 56 98 66 97 78C93 53 97 29 106 14C98 12 89 11 80 11ZM67 51C49 51 38 64 38 81C38 99 49 112 67 112C85 112 97 99 97 81C97 64 85 51 67 51Z"/>
   </g>
 </svg>

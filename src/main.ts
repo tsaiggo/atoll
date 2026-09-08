@@ -6,21 +6,27 @@ import {
   saveSettings,
 } from "./config";
 import {
+  DEMO_CODEX_USAGE,
   DEMO_ENERGY,
   DEMO_MEDIA,
   DEMO_MEDIA_SOURCES,
+  codexUsageSignalKey,
+  codexUsageTransition,
   formatPlaybackTime,
+  normalizeCodexUsage,
   normalizeEnergy,
   normalizeMedia,
   normalizeMediaSourceSelection,
   normalizeMediaSources,
   type ContentKind,
+  type CodexUsageStatus,
   type EnergyStatus,
   type MediaConnection,
   type MediaSource,
   type MediaStatus,
   type NativeMediaPayload,
   type NativeMediaUpdatePayload,
+  type NativeCodexUsagePayload,
   type NativeEnergyPayload,
   type NativeVolumePayload,
   type ShellState,
@@ -39,22 +45,23 @@ import {
 import { copyFor, normalizeLanguage } from "./i18n";
 import {
   applyNativeShell,
+  getCodexUsageStatus,
   getEnergyStatus,
   getFullscreen,
   getMediaStatus,
   nativeRuntime,
+  refreshNativeCodexUsage,
   runNativeMediaCommand,
   runNativeMediaSeek,
   selectNativeMediaSource,
   setNativeSystemMute,
   setNativeSystemVolume,
   setNativeMenuLanguage,
+  setNativeCodexUsageEnabled,
   showNativeContextMenu,
   subscribeNativeEvents,
-  type NativeShellSettledPayload,
 } from "./platform/native";
-import { IslandMaterialFlow, type MaterialPulse } from "./material/flow";
-import { SHELL_GEOMETRY } from "./shell/geometry";
+import { isNotchEdge, type NotchGeometry, type NotchEdge } from "./shell/geometry";
 import { renderApp, updateMediaProgress } from "./ui/render";
 import "./styles.css";
 
@@ -63,13 +70,7 @@ interface NativeAcceptedShell {
   signature: string;
 }
 
-interface PendingShellPresentation {
-  revision: number;
-  previous: ShellState;
-  next: Exclude<ShellState, "hidden">;
-  animated: boolean;
-  pendingPulse: MaterialPulse | null;
-}
+
 
 interface PendingMediaSeek {
   readonly identity: string;
@@ -80,24 +81,29 @@ interface PendingMediaSeek {
 const appElement = document.querySelector<HTMLElement>("#app");
 if (!appElement) throw new Error("Atoll root element was not found.");
 const app: HTMLElement = appElement;
-const materialLayer = document.querySelector<HTMLElement>("#material-layer");
-const materialCanvas = document.querySelector<HTMLCanvasElement>("#material-flow");
-if (!materialLayer || !materialCanvas) {
-  throw new Error("Atoll material layer was not found.");
-}
-const materialFlow = new IslandMaterialFlow(materialLayer, materialCanvas);
 
 const requestedPreviewMode = new URLSearchParams(location.search).get("preview");
 const previewMode =
   import.meta.env.DEV && isPreviewMode(requestedPreviewMode) ? requestedPreviewMode : null;
 document.documentElement.classList.toggle("native-runtime", nativeRuntime);
+if (previewMode) document.documentElement.dataset.preview = previewMode;
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const lightColorScheme = window.matchMedia("(prefers-color-scheme: light)");
 
 let settings = loadSettings();
+const previewEdge = new URLSearchParams(location.search).get("edge");
+if (previewMode && isNotchEdge(previewEdge)) settings = { ...settings, notchEdge: previewEdge };
+let pointerInside = false;
+let keyboardNavigation = false;
+let suppressNotchMotion = false;
+let volumeEditing = false;
+let deferredRender = false;
+let notchPinned = false;
+let notchHoverId: number | null = null;
+let notchLeaveId: number | null = null;
 document.documentElement.lang = settings.language;
 let shell: ShellState = "hidden";
-let lastVisibleShell: Exclude<ShellState, "hidden"> = "reef";
+
 let content: ContentKind = "idle";
 let expandedPanel: ExpandedPanel = "home";
 let media: MediaStatus | null = null;
@@ -117,6 +123,15 @@ let energy: EnergyStatus = {
   history: [],
   source: "battery_discharge",
 };
+let codexUsage: CodexUsageStatus = {
+  enabled: settings.codexUsageEnabled,
+  status: settings.codexUsageEnabled ? "checking" : "disabled",
+  windows: [],
+  dailyUsage: [],
+  activityAvailable: false,
+  updatedAtMs: null,
+  source: "codex_app_server",
+};
 let selectedEnergyDayKey: string | null = null;
 let fullscreen = false;
 let fullscreenOverride = false;
@@ -135,6 +150,10 @@ let mediaSeekCommitId: number | null = null;
 let mediaSeekEditing = false;
 let restoreMediaSeekFocus = false;
 let pendingSourceSelection = false;
+let pendingCodexUsageAction: "enable" | "disable" | "refresh" | null = null;
+let codexUsageTickId: number | null = null;
+let codexUsageActivationPending = false;
+const surfacedCodexUsageSignals = new Set<string>();
 let volumeCommandRevision = 0;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
 let mediaCommandFeedbackId: number | null = null;
@@ -144,10 +163,11 @@ let shellTransitionResetId: number | null = null;
 let manuallyHidden = false;
 let shellRevision = 0;
 let nativeAcceptedShell: NativeAcceptedShell | null = null;
-let nativeShellQueue: Promise<void> = Promise.resolve();
-let nativeEventBridgeReady = false;
-let pendingShellPresentation: PendingShellPresentation | null = null;
-let shellPresentationSafetyId: number | null = null;
+
+
+
+
+
 
 function isPreviewMode(value: string | null): value is PreviewMode {
   return (
@@ -155,17 +175,37 @@ function isPreviewMode(value: string | null): value is PreviewMode {
     value === "compact-media" ||
     value === "expanded-home" ||
     value === "expanded-media" ||
+    value === "expanded-volume" ||
     value === "expanded-energy" ||
+    value === "expanded-codex" ||
     value === "expanded-sources" ||
     value === "settings"
   );
 }
 
 app.addEventListener("click", onClick);
+app.addEventListener("pointerenter", onNotchEnter);
+app.addEventListener("pointerleave", onNotchLeave);
+// Replacing the hovered SVG during a render can invalidate the browser's
+// boundary-event target. Reconcile from the real next pointer target as well.
+window.addEventListener("pointermove", (event) => {
+  const inside = event.target instanceof Node && event.target !== app && app.contains(event.target);
+  if (inside && !pointerInside) onNotchEnter();
+  else if (!inside && pointerInside) onNotchLeave();
+});
+window.addEventListener("pointerout", (event) => {
+  if (event.relatedTarget === null && pointerInside) onNotchLeave();
+});
+app.addEventListener("pointerover", onNotchHover);
+app.addEventListener("focusin", onNotchFocus);
+app.addEventListener("focusout", () => {
+  if (!pointerInside && !notchPinned) scheduleNotchLeave();
+});
 app.addEventListener("contextmenu", onContextMenu);
+app.addEventListener("pointerdown", () => { keyboardNavigation = false; });
 app.addEventListener("pointerdown", onExpandedActivity);
-app.addEventListener("pointerup", endMediaSeekEditing);
-app.addEventListener("pointercancel", endMediaSeekEditing);
+window.addEventListener("pointerup", endMediaSeekEditing);
+window.addEventListener("pointercancel", endMediaSeekEditing);
 app.addEventListener("wheel", onExpandedActivity, { passive: true });
 app.addEventListener("input", onInput);
 app.addEventListener("change", onChange);
@@ -184,6 +224,7 @@ document.addEventListener("visibilitychange", () => {
     reconcilePresentation();
   }
   scheduleMediaProgressTick();
+  scheduleCodexUsageTick();
 });
 
 if (previewMode) {
@@ -198,8 +239,9 @@ async function startApplication(): Promise<void> {
     await setNativeMenuLanguage(settings.language).catch((error: unknown) =>
       console.warn("Unable to update the Atoll menu language", error),
     );
-    const subscriptions = await subscribeNativeEvents({
+    await subscribeNativeEvents({
       onAction: applyExternalAction,
+      onCodexUsage: updateCodexUsage,
       onEnergy: updateEnergy,
       onMediaUpdate: updateMediaConnect,
       onVolume: updateVolume,
@@ -208,12 +250,12 @@ async function startApplication(): Promise<void> {
         if (!fullscreen) fullscreenOverride = false;
         reconcilePresentation();
       },
-      onShellSettled: releaseNativeShellPresentation,
+      onShellSettled: () => {},
     }).catch((error: unknown) => {
       console.warn("Atoll event bridge unavailable", error);
       return null;
     });
-    nativeEventBridgeReady = subscriptions !== null;
+
   }
   if (shouldHideForFullscreen()) {
     await setShell("hidden", false);
@@ -235,6 +277,7 @@ async function startApplication(): Promise<void> {
     return null;
   });
   if (initialEnergy) updateEnergy(initialEnergy);
+  if (settings.codexUsageEnabled) void startPersistedCodexUsage();
   mediaEventsReady = true;
 }
 
@@ -242,6 +285,11 @@ function configurePreview(mode: PreviewMode): void {
   media = { ...DEMO_MEDIA };
   volume = { level: 0.68, muted: false };
   energy = { ...DEMO_ENERGY };
+  codexUsage = {
+    ...DEMO_CODEX_USAGE,
+    windows: [...DEMO_CODEX_USAGE.windows],
+    dailyUsage: [...DEMO_CODEX_USAGE.dailyUsage],
+  };
   selectedEnergyDayKey = energy.dayKey;
   mediaConnection = {
     status: "ready",
@@ -269,9 +317,19 @@ function configurePreview(mode: PreviewMode): void {
       expandedPanel = "media";
       previewShell = "expanded";
       break;
+    case "expanded-volume":
+      content = "volume";
+      expandedPanel = "volume";
+      previewShell = "expanded";
+      break;
     case "expanded-energy":
       content = "idle";
       expandedPanel = "energy";
+      previewShell = "expanded";
+      break;
+    case "expanded-codex":
+      content = "idle";
+      expandedPanel = "codex";
       previewShell = "expanded";
       break;
     case "expanded-sources":
@@ -289,6 +347,105 @@ function configurePreview(mode: PreviewMode): void {
   scheduleMediaProgressTick();
 }
 
+function clearNotchHover(): void {
+  if (notchHoverId !== null) window.clearTimeout(notchHoverId);
+  notchHoverId = null;
+}
+
+function clearNotchLeave(): void {
+  if (notchLeaveId !== null) window.clearTimeout(notchLeaveId);
+  notchLeaveId = null;
+}
+
+function notchInteractionPending(): boolean {
+  return pendingMediaCommand !== null || pendingMediaSeek !== null ||
+    mediaSeekEditing || volumeEditing || pendingSourceSelection || pendingCodexUsageAction !== null;
+}
+
+function onNotchEnter(): void {
+  pointerInside = true;
+  clearNotchLeave();
+  clearExpandedExpiry();
+  if (shell === "reef") void setShell("compact");
+}
+
+function onNotchLeave(): void {
+  pointerInside = false;
+  clearNotchHover();
+  scheduleNotchLeave();
+}
+
+function scheduleNotchLeave(): void {
+  clearNotchLeave();
+  if (notchPinned || shell === "hidden") return;
+  notchLeaveId = window.setTimeout(() => {
+    notchLeaveId = null;
+    if (pointerInside || notchPinned || (keyboardNavigation && app.contains(document.activeElement))) return;
+    if (notchInteractionPending()) {
+      scheduleNotchLeave();
+      return;
+    }
+    collapse();
+  }, 450);
+}
+
+function panelFromValue(value: string | undefined): ExpandedPanel | null {
+  return value === "media" || value === "volume" || value === "energy" ||
+    value === "codex" || value === "settings" || value === "home" ? value : null;
+}
+
+function onNotchHover(event: PointerEvent): void {
+  clearNotchLeave();
+  const element = event.target instanceof Element ? event.target : null;
+  const target = element?.closest<HTMLElement>("[data-notch-panel]");
+  clearNotchHover();
+  if (notchInteractionPending() || app.hasAttribute("data-geometry-pending")) return;
+  if (!target) {
+    if (shell === "expanded" && !notchPinned && element?.closest(".notch-rail")) {
+      notchHoverId = window.setTimeout(() => {
+        notchHoverId = null;
+        if (pointerInside && !notchPinned && !app.querySelector(".notch-detail:hover, [data-notch-panel]:hover")) void setShell("compact");
+      }, 250);
+    }
+    return;
+  }
+  const panel = panelFromValue(target.dataset.notchPanel);
+  // The orb reveals its gear on hover; opening settings is an explicit click.
+  if (panel === "settings") return;
+  if (!panel || (shell === "expanded" && (expandedPanel === panel || (expandedPanel === "settings" && notchPinned)))) return;
+  clearNotchHover();
+  notchHoverId = window.setTimeout(() => {
+    notchHoverId = null;
+    if (pointerInside) void openNotchPanel(panel);
+  }, 100);
+}
+
+function onNotchFocus(event: FocusEvent): void {
+  clearNotchLeave();
+  const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-notch-panel]") : null;
+  const panel = panelFromValue(target?.dataset.notchPanel);
+  if (panel && keyboardNavigation && !pointerInside && !notchInteractionPending() &&
+      !(shell === "expanded" && expandedPanel === panel)) void openNotchPanel(panel);
+}
+
+async function openNotchPanel(panel: ExpandedPanel, pin = false): Promise<void> {
+  clearNotchHover();
+  clearNotchLeave();
+  if (pin) notchPinned = true;
+  if (panel === "energy" && !selectedEnergyDayKey) selectedEnergyDayKey = energy.dayKey || null;
+  expandedPanel = panel;
+  content = panel === "media" ? "media" : panel === "volume" ? "volume" : panel === "settings" ? "settings" : "idle";
+  if (shell === "expanded") render();
+  else await setShell("expanded");
+}
+
+function toggleNotchPin(): void {
+  notchPinned = !notchPinned;
+  if (shell === "reef") void setShell("compact");
+  else render();
+  if (!notchPinned && !pointerInside) scheduleNotchLeave();
+}
+
 function onClick(event: MouseEvent): void {
   const target = event.target as HTMLElement;
   const actionable = target.closest<HTMLElement>("[data-action]");
@@ -304,15 +461,8 @@ function onClick(event: MouseEvent): void {
     return;
   }
 
-  if (shell === "reef") {
-    expandedPanel = preferredExpandedPanel();
-    void setShell("expanded");
-  } else if (shell === "compact") {
-    expandedPanel = preferredExpandedPanel();
-    void setShell("expanded");
-  } else if (shell === "expanded") {
-    collapse();
-  }
+  if (target.closest(".notch-detail")) return;
+  toggleNotchPin();
 }
 
 function onContextMenu(event: MouseEvent): void {
@@ -329,10 +479,15 @@ function onExpandedActivity(event?: Event): void {
   if (target instanceof HTMLInputElement && target.dataset.control === "media-seek") {
     mediaSeekEditing = true;
   }
+  if (target instanceof HTMLInputElement && target.dataset.control === "system-volume") volumeEditing = true;
   resetExpandedExpiry();
 }
 
 function endMediaSeekEditing(event: PointerEvent): void {
+  if (volumeEditing) {
+    volumeEditing = false;
+    window.setTimeout(() => { if (deferredRender) render(); }, 0);
+  }
   const target = event.target;
   if (target instanceof HTMLInputElement && target.dataset.control === "media-seek") {
     mediaSeekEditing = false;
@@ -343,6 +498,7 @@ function onInput(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
   if (target.dataset.control === "system-volume") {
+    volumeEditing = true;
     const level = volumeLevelFromControl(target.value);
     if (level === null) return;
 
@@ -373,6 +529,7 @@ function onChange(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
   if (target.dataset.control === "system-volume") {
+    volumeEditing = false;
     const level = volumeLevelFromControl(target.value);
     if (level !== null) void setSystemVolume(level);
     return;
@@ -387,13 +544,15 @@ function onChange(event: Event): void {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === "Tab" || event.key.startsWith("Arrow")) keyboardNavigation = true;
+  if (event.key === "Escape") keyboardNavigation = false;
   resetExpandedExpiry();
-  if (event.key === "Escape" && shell === "expanded") {
+  if (event.key === "Escape" && (shell === "expanded" || shell === "compact")) {
     event.preventDefault();
     if (expandedPanel === "sources") {
       expandedPanel = "media";
       render();
-    } else if (expandedPanel === "energy") {
+    } else if (expandedPanel === "energy" || expandedPanel === "codex") {
       expandedPanel = "home";
       render();
     } else {
@@ -404,7 +563,36 @@ function onKeyDown(event: KeyboardEvent): void {
 
 async function runAction(action: string, value?: string): Promise<void> {
   resetExpandedExpiry();
+  clearNotchHover();
   switch (action) {
+    case "notch-panel": {
+      const panel = panelFromValue(value);
+      if (panel) await openNotchPanel(panel, panel === "settings");
+      if (panel === "codex" && codexUsage.enabled && pendingCodexUsageAction === null) {
+        await runAction("refresh-codex-usage");
+      }
+      break;
+    }
+    case "notch-pin":
+      toggleNotchPin();
+      break;
+    case "set-notch-edge":
+      if (isNotchEdge(value)) {
+        settings = { ...settings, notchEdge: value };
+        notchPinned = true;
+        pointerInside = false;
+        saveSettings(settings);
+        nativeAcceptedShell = null;
+        await setShell(shell, false, true);
+      }
+      break;
+    case "set-notch-visibility":
+      if (value === "auto" || value === "always") {
+        settings = { ...settings, notchVisibility: value };
+        saveSettings(settings);
+        render();
+      }
+      break;
     case "collapse":
       collapse();
       break;
@@ -421,6 +609,22 @@ async function runAction(action: string, value?: string): Promise<void> {
       selectedEnergyDayKey = energy.dayKey || null;
       expandedPanel = "energy";
       await setShell("expanded");
+      break;
+    case "open-codex":
+      expandedPanel = "codex";
+      await setShell("expanded");
+      if (settings.codexUsageEnabled && codexUsage.status === "disabled") {
+        void refreshCodexUsage();
+      }
+      break;
+    case "enable-codex-usage":
+      await setCodexUsageEnabled(true);
+      break;
+    case "disable-codex-usage":
+      await setCodexUsageEnabled(false);
+      break;
+    case "refresh-codex-usage":
+      await refreshCodexUsage();
       break;
     case "select-energy-day":
       if (value && hasEnergyRecordForDay(energy, value)) {
@@ -503,6 +707,14 @@ function applyExternalAction(action: string): void {
       expandedPanel = "settings";
       content = "settings";
       void setShell("expanded");
+      break;
+    case "codex":
+      manuallyHidden = false;
+      expandedPanel = "codex";
+      void setShell("expanded");
+      if (settings.codexUsageEnabled && codexUsage.status === "disabled") {
+        void refreshCodexUsage();
+      }
       break;
     case "demo:idle":
       manuallyHidden = false;
@@ -623,11 +835,9 @@ function surfaceEvent(panel: ExpandedPanel): void {
     return;
   }
   if (shell === "expanded") {
-    // Settings is an intentional user task; media or volume updates should not
-    // pull focus away from it. Every other expanded surface follows the event
-    // that woke it, so a new track visibly reaches the Review v2 media card.
-    if (expandedPanel !== "settings") expandedPanel = panel;
-    queueMaterialPulse(panel === "media" ? "media" : "volume");
+    // A hovered or pinned panel is an intentional task. Background changes
+    // update its data without switching the detail the user is working in.
+    if (!notchPinned && !pointerInside && expandedPanel !== "settings") expandedPanel = panel;
     resetExpandedExpiry();
     render();
     return;
@@ -643,7 +853,7 @@ function updateVolume(payload: NativeVolumePayload): void {
   };
   if (payload.initial) return;
   volumeVisibleUntil = Date.now() + 1800;
-  surfaceEvent("home");
+  surfaceEvent("volume");
   scheduleVisibleTransientExpiry();
 }
 
@@ -669,11 +879,151 @@ function updateEnergy(payload: NativeEnergyPayload): void {
     selectedEnergyDayKey = energy.dayKey || null;
   }
 
-  // Energy is a passive Home status. A sampler update must not interrupt the
-  // user or compete with media and volume for the Island.
-  if (shell === "expanded" && (expandedPanel === "home" || expandedPanel === "energy")) {
+  // Refresh the already-visible reading without opening or switching panels.
+  if (shell === "expanded" || shell === "compact") {
     render();
   }
+}
+
+function updateCodexUsage(payload: NativeCodexUsagePayload): void {
+  const next = normalizeCodexUsage(payload);
+  const signal = codexUsageTransition(codexUsage, next);
+  codexUsage = next;
+
+  const maySynchronizeEnabledSetting =
+    !codexUsageActivationPending || next.enabled || !settings.codexUsageEnabled;
+  if (maySynchronizeEnabledSetting && settings.codexUsageEnabled !== next.enabled) {
+    settings = { ...settings, codexUsageEnabled: next.enabled };
+    saveSettings(settings);
+  }
+
+  if (signal) {
+    const key = codexUsageSignalKey(signal);
+    if (!surfacedCodexUsageSignals.has(key)) {
+      surfacedCodexUsageSignals.add(key);
+      surfaceEvent("codex");
+      return;
+    }
+  }
+
+  // Routine updates repaint an existing rail; they never open the notch.
+  if (shell === "expanded" || shell === "compact") render();
+}
+
+async function startPersistedCodexUsage(): Promise<void> {
+  if (!settings.codexUsageEnabled || !nativeRuntime || codexUsageActivationPending) return;
+
+  codexUsageActivationPending = true;
+  codexUsage = emptyCodexUsage(true, "checking");
+  try {
+    // The native runtime intentionally starts disabled for every process. A
+    // persisted opt-in must therefore explicitly re-enable it before asking
+    // for the initial snapshot.
+    await setNativeCodexUsageEnabled(true);
+    const initial = await getCodexUsageStatus();
+    updateCodexUsage(initial);
+    if (!codexUsage.enabled) codexUsage = emptyCodexUsage(true, "unavailable");
+  } catch (error: unknown) {
+    console.warn("Unable to start persisted Codex usage", error);
+    codexUsage = emptyCodexUsage(true, "unavailable");
+  } finally {
+    codexUsageActivationPending = false;
+    if (shell === "expanded" && expandedPanel === "codex") render();
+  }
+}
+
+async function setCodexUsageEnabled(enabled: boolean): Promise<void> {
+  if (
+    pendingCodexUsageAction !== null ||
+    (settings.codexUsageEnabled === enabled && (!enabled || codexUsage.status !== "disabled"))
+  ) {
+    return;
+  }
+
+  const previousSettings = settings;
+  const previousUsage = codexUsage;
+  pendingCodexUsageAction = enabled ? "enable" : "disable";
+  if (enabled) {
+    // Persist the explicit opt-in before the native runtime starts. A failed
+    // startup stays opted in and surfaces an honest unavailable state rather
+    // than silently erasing the user's choice.
+    settings = { ...settings, codexUsageEnabled: true };
+    saveSettings(settings);
+    codexUsageActivationPending = true;
+    codexUsage = emptyCodexUsage(true, "checking");
+  } else {
+    codexUsage = emptyCodexUsage(false, "disabled");
+  }
+  if (shell === "expanded" && expandedPanel === "codex") render();
+
+  try {
+    if (nativeRuntime) {
+      await setNativeCodexUsageEnabled(enabled);
+      const refreshed = await getCodexUsageStatus();
+      updateCodexUsage(refreshed);
+    } else {
+      codexUsage = emptyCodexUsage(enabled, enabled ? "unavailable" : "disabled");
+    }
+    if (!enabled) {
+      settings = { ...settings, codexUsageEnabled: false };
+      saveSettings(settings);
+    } else if (!codexUsage.enabled) {
+      codexUsage = emptyCodexUsage(true, "unavailable");
+    }
+  } catch (error: unknown) {
+    console.warn("Unable to update the Codex usage setting", error);
+    if (enabled) {
+      codexUsage = emptyCodexUsage(true, "unavailable");
+    } else {
+      settings = previousSettings;
+      codexUsage = previousUsage;
+    }
+  } finally {
+    codexUsageActivationPending = false;
+    pendingCodexUsageAction = null;
+    if (shell === "expanded" && expandedPanel === "codex") render();
+  }
+}
+
+async function refreshCodexUsage(): Promise<void> {
+  if (!settings.codexUsageEnabled || pendingCodexUsageAction !== null) return;
+
+  pendingCodexUsageAction = "refresh";
+  if (codexUsage.status !== "ready") {
+    codexUsage = { ...codexUsage, enabled: true, status: "checking" };
+  }
+  if (shell === "expanded" && expandedPanel === "codex") render();
+
+  try {
+    if (!nativeRuntime) {
+      codexUsage = emptyCodexUsage(true, "unavailable");
+      return;
+    }
+    await refreshNativeCodexUsage();
+    const refreshed = await getCodexUsageStatus();
+    updateCodexUsage(refreshed);
+  } catch (error: unknown) {
+    console.warn("Unable to refresh Codex usage", error);
+    codexUsage = emptyCodexUsage(true, "unavailable");
+  } finally {
+    pendingCodexUsageAction = null;
+    if (shell === "expanded" && expandedPanel === "codex") render();
+  }
+}
+
+function emptyCodexUsage(
+  enabled: boolean,
+  status: CodexUsageStatus["status"],
+): CodexUsageStatus {
+  return {
+    enabled,
+    status,
+    windows: [],
+    dailyUsage: [],
+    activityAvailable: false,
+    updatedAtMs: null,
+    source: "codex_app_server",
+  };
 }
 
 function hasEnergyRecordForDay(status: EnergyStatus, dayKey: string): boolean {
@@ -783,8 +1133,7 @@ function scheduleMediaProgressTick(): void {
   }
   if (
     document.hidden ||
-    shell !== "expanded" ||
-    expandedPanel !== "media" ||
+    (shell !== "expanded" && shell !== "compact") ||
     !media?.playing ||
     media.positionMs === undefined ||
     media.durationMs === undefined ||
@@ -797,6 +1146,29 @@ function scheduleMediaProgressTick(): void {
 
 function refreshMediaProgress(): void {
   updateMediaProgress(app, media, settings.language);
+}
+
+function scheduleCodexUsageTick(): void {
+  if (codexUsageTickId !== null) {
+    window.clearTimeout(codexUsageTickId);
+    codexUsageTickId = null;
+  }
+  if (
+    document.hidden ||
+    shell !== "expanded" ||
+    expandedPanel !== "codex" ||
+    !codexUsage.enabled ||
+    codexUsage.status !== "ready" ||
+    codexUsage.windows.length === 0
+  ) {
+    return;
+  }
+
+  const nextMinute = 60_000 - (Date.now() % 60_000) + 16;
+  codexUsageTickId = window.setTimeout(() => {
+    codexUsageTickId = null;
+    if (shell === "expanded" && expandedPanel === "codex") render();
+  }, nextMinute);
 }
 
 function reconcilePresentation(
@@ -825,7 +1197,7 @@ function reconcilePresentation(
   if (preserveExpanded && shell === "expanded") {
     render();
   } else if (content === "idle") {
-    void setShell("reef", animate);
+    void setShell(pointerInside || notchPinned || settings.notchVisibility === "always" ? "compact" : "reef", animate);
   } else {
     void setShell("compact", animate);
   }
@@ -836,140 +1208,42 @@ function shouldHideForFullscreen(): boolean {
 }
 
 function collapse(): void {
+  notchPinned = false;
+  pointerInside = false;
+  clearNotchHover();
+  clearNotchLeave();
   clearExpandedExpiry();
-  if (content === "settings") content = "idle";
-  reconcilePresentation(!reducedMotion.matches, false);
+  content = "idle";
+  if (manuallyHidden || shouldHideForFullscreen()) void setShell("hidden");
+  else void setShell(settings.notchVisibility === "always" ? "compact" : "reef");
 }
 
-function setGeometryPending(pending: boolean): void {
-  if (pending) {
-    app.dataset.geometryPending = "";
-  } else {
-    delete app.dataset.geometryPending;
-  }
-}
-
-function clearPendingShellPresentation(): void {
-  if (shellPresentationSafetyId !== null) {
-    window.clearTimeout(shellPresentationSafetyId);
-    shellPresentationSafetyId = null;
-  }
-  pendingShellPresentation = null;
-  setGeometryPending(false);
-}
-
-function queueMaterialPulse(kind: MaterialPulse): void {
-  const pending = pendingShellPresentation;
-  if (pending && pending.revision === shellRevision && pending.next === "expanded") {
-    pending.pendingPulse = kind;
-    return;
-  }
-  materialFlow.pulse(kind);
-}
-
-function releaseNativeShellPresentation(payload: NativeShellSettledPayload): void {
-  const pending = pendingShellPresentation;
-  if (
-    !pending ||
-    pending.revision !== payload.transitionId ||
-    pending.revision !== shellRevision ||
-    pending.next !== shell
-  ) {
-    return;
-  }
-
-  clearPendingShellPresentation();
-  animateNextShellContent = pending.animated && pending.previous !== pending.next;
-  setShellTransition(pending.previous, pending.next, animateNextShellContent);
-  render();
-  if (pending.pendingPulse) materialFlow.pulse(pending.pendingPulse);
-}
-
-async function setShell(
-  next: ShellState,
-  animated = !reducedMotion.matches,
-  forceNative = false,
-): Promise<void> {
+async function setShell(next: ShellState, animated = !reducedMotion.matches, forceNative = false): Promise<void> {
   const previous = shell;
-  const enteredExpanded = previous !== "expanded" && next === "expanded";
+  if (next === "hidden") {
+    pointerInside = false;volumeEditing = false;deferredRender = false;
+    clearNotchHover();clearNotchLeave();
+  }
   if (next !== "expanded") clearExpandedExpiry();
-  if (previous !== next || forceNative) shellRevision += 1;
-  const revision = shellRevision;
-  clearPendingShellPresentation();
-  const shouldGatePresentation =
-    nativeRuntime && nativeEventBridgeReady && next !== "hidden" && previous !== next;
-  animateNextShellContent = animated && previous !== next && !shouldGatePresentation;
-  if (shouldGatePresentation) {
-    pendingShellPresentation = {
-      revision,
-      previous,
-      next,
-      animated,
-      pendingPulse: enteredExpanded && animated ? "expand" : null,
-    };
-    setGeometryPending(true);
-    // This is only a failure guard for an unavailable native event bridge, not
-    // the animation clock. Normal presentation is released by the matching
-    // native transition-id event immediately after its final geometry frame.
-    shellPresentationSafetyId = window.setTimeout(() => {
-      releaseNativeShellPresentation({ transitionId: revision });
-    }, 1200);
-  } else {
-    setShellTransition(previous, next, animateNextShellContent);
-    if (enteredExpanded && animated) materialFlow.pulse("expand");
-  }
+  if (forceNative) nativeAcceptedShell = null;
+  animateNextShellContent = animated && previous !== next;
+  suppressNotchMotion = !animated;
+  setShellTransition(previous, next, animateNextShellContent);
   shell = next;
-  if (next !== "hidden") lastVisibleShell = next;
   render();
-  if (!previewMode && enteredExpanded) {
-    setExpandedExpiry();
-  } else if (!previewMode && next === "expanded" && expandedExpiryId === null) {
-    resetExpandedExpiry();
-  }
+  suppressNotchMotion = false;
+  if (!previewMode && next === "expanded" && (previous !== "expanded" || expandedExpiryId === null)) setExpandedExpiry();
+}
+
+async function presentNativeNotchFrame(geometry: NotchGeometry, state: ShellState, edge: NotchEdge): Promise<void> {
   if (!nativeRuntime) return;
-
-  const geometry = next === "hidden" ? SHELL_GEOMETRY[lastVisibleShell] : SHELL_GEOMETRY[next];
   const theme = lightColorScheme.matches ? "light" : "dark";
-  const signature = `${next}:${geometry.width}x${geometry.height}:r${geometry.cornerRadius}:${settings.topMargin}:${theme}`;
-  const syncNativeShell = async (): Promise<void> => {
-    if (revision !== shellRevision) return;
-    if (!forceNative && nativeAcceptedShell?.signature === signature) {
-      return;
-    }
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        await applyNativeShell({
-          shell: next,
-          width: geometry.width,
-          height: geometry.height,
-          cornerRadius: geometry.cornerRadius,
-          animated: attempt === 0 ? animated : false,
-          topMargin: settings.topMargin,
-          theme,
-          transitionId: revision,
-        });
-        nativeAcceptedShell = { shell: next, signature };
-        return;
-      } catch (error: unknown) {
-        lastError = error;
-        if (revision !== shellRevision) return;
-      }
-    }
-
-    console.warn("Unable to update the Atoll shell after retrying", lastError);
-    releaseNativeShellPresentation({ transitionId: revision });
-    const fallback = nativeAcceptedShell?.shell ?? "hidden";
-    if (fallback !== shell) {
-      void setShell(fallback, false);
-    }
-  };
-  const operation = nativeShellQueue.then(syncNativeShell, syncNativeShell);
-  nativeShellQueue = operation.then(
-    () => undefined,
-    () => undefined,
-  );
-  await operation;
+  const signature = `${state}:${edge}:${theme}:${geometry.width}:${geometry.height}:${geometry.path}`;
+  if (nativeAcceptedShell?.signature === signature) return;
+  await applyNativeShell({shell:state, width:geometry.width, height:geometry.height,
+    cornerRadius:geometry.cornerRadius, animated:false, topMargin:0, edge,
+    regions:geometry.regions, theme, transitionId:++shellRevision});
+  nativeAcceptedShell = {shell:state,signature};
 }
 
 function setShellTransition(
@@ -1045,7 +1319,7 @@ function scheduleExpandedExpiry(sessionRevision: number): void {
       pendingMediaCommand !== null ||
       pendingMediaSeek !== null ||
       mediaSeekEditing ||
-      pendingSourceSelection
+      volumeEditing || pendingSourceSelection || pendingCodexUsageAction !== null || pointerInside || notchPinned || (keyboardNavigation && app.contains(document.activeElement))
     ) {
       expandedExpiryDeadline = Date.now() + EXPANDED_AUTO_COLLAPSE_MS;
       scheduleExpandedExpiry(sessionRevision);
@@ -1085,7 +1359,6 @@ async function sendMediaCommand(command: MediaCommand): Promise<void> {
   ) {
     return;
   }
-  queueMaterialPulse("control");
 
   if (!nativeRuntime || demoOverride === "media") {
     if (command === "toggle") media = optimisticPlaybackToggle(current);
@@ -1227,7 +1500,6 @@ async function commitMediaSeek(request: PendingMediaSeek): Promise<void> {
     return;
   }
 
-  queueMaterialPulse("control");
   const previous = current;
   const optimistic = optimisticMediaSeek(current, request.positionMs);
   media = optimistic;
@@ -1290,36 +1562,39 @@ function preferredExpandedPanel(): ExpandedPanel {
 }
 
 function render(): void {
+  if (volumeEditing && shell !== "hidden") {
+    deferredRender = true;
+    return;
+  }
+  deferredRender = false;
+
   const now = Date.now();
   const vm: AppViewModel = {
     shell,
+    notchPinned,
     content,
     expandedPanel,
     media,
     mediaConnection,
     volume,
     energy,
+    codexUsage,
     selectedEnergyDayKey,
     settings,
     pendingMediaCommand,
     pendingMediaSeek: pendingMediaSeek !== null,
     pendingSourceSelection,
+    pendingCodexUsageAction,
     mediaCommandFeedback,
     showInlineVolume: now < volumeVisibleUntil,
     animateContent: animateNextShellContent,
-    motionDisabled: reducedMotion.matches,
+    motionDisabled: reducedMotion.matches || suppressNotchMotion,
     now,
   };
   animateNextShellContent = false;
-  renderApp(app, vm);
-  const geometry = shell === "hidden" ? SHELL_GEOMETRY[lastVisibleShell] : SHELL_GEOMETRY[shell];
-  materialFlow.sync({
-    shell,
-    cornerRadius: geometry.cornerRadius,
-    motionDisabled: reducedMotion.matches,
-    lightTheme: lightColorScheme.matches,
-  });
+  renderApp(app, vm, nativeRuntime ? presentNativeNotchFrame : undefined);
   scheduleMediaProgressTick();
+  scheduleCodexUsageTick();
   restoreMediaSeekFocusIfReady();
 }
 

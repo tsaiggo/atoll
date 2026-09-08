@@ -76,6 +76,7 @@ test("migrates an existing hidden idle preference to the visible Reef default", 
 
   assert.equal(settings.language, "en");
   assert.equal(settings.hideInFullscreen, false);
+  assert.equal(settings.codexUsageEnabled, false);
   const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<string, unknown>;
   assert.equal("idleMode" in settings, false);
   assert.equal("compactTimeoutMs" in settings, false);
@@ -93,6 +94,21 @@ test("persists Simplified Chinese in the existing v1 settings record", () => {
   assert.equal(loadSettings().language, "zh-CN");
 });
 
+test("keeps Codex usage off for older settings and persists only an explicit opt-in", () => {
+  storage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({ language: "en", hideInFullscreen: true }),
+  );
+  assert.equal(loadSettings().codexUsageEnabled, false);
+
+  saveSettings({ ...DEFAULT_SETTINGS, codexUsageEnabled: true });
+  const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<string, unknown>;
+  assert.equal(stored.codexUsageEnabled, true);
+  assert.equal("prompts" in stored, false);
+  assert.equal("files" in stored, false);
+  assert.equal("apiKey" in stored, false);
+});
+
 test("falls back to English for an unsupported persisted language", () => {
   storage.setItem(
     SETTINGS_KEY,
@@ -102,13 +118,13 @@ test("falls back to English for an unsupported persisted language", () => {
   assert.equal(loadSettings().language, "en");
 });
 
-test("migrates legacy margins to the Island's fixed edge-attached anchor", () => {
+test("retires legacy margins when migrating to edge placement", () => {
   storage.setItem(
     SETTINGS_KEY,
     JSON.stringify({ ...DEFAULT_SETTINGS, topMargin: 12 }),
   );
 
-  assert.equal(loadSettings().topMargin, -12);
+  assert.equal(loadSettings().topMargin, 0);
   const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null") as Record<string, unknown>;
   assert.equal("topMargin" in stored, false);
 });
@@ -141,4 +157,49 @@ test("cleans retired timer data and settings during upgrade", () => {
   assert.equal("idleMode" in stored, false);
   assert.equal("compactTimeoutMs" in stored, false);
   assert.equal("expandedTimeoutMs" in stored, false);
+});
+
+
+test("starts on the top edge with a rail revealed on hover", () => {
+  const settings = loadSettings();
+  assert.equal(settings.notchEdge, "top");
+  assert.equal(settings.notchVisibility, "auto");
+  assert.equal(settings.codexUsageEnabled, false);
+});
+
+test("persists every edge and visibility choice without changing Codex opt-in", () => {
+  for (const notchEdge of ["top", "bottom", "left", "right"] as const) {
+    for (const notchVisibility of ["auto", "always"] as const) {
+      saveSettings({ ...DEFAULT_SETTINGS, notchEdge, notchVisibility, codexUsageEnabled: true });
+      const loaded = loadSettings();
+      assert.equal(loaded.notchEdge, notchEdge);
+      assert.equal(loaded.notchVisibility, notchVisibility);
+      assert.equal(loaded.codexUsageEnabled, true);
+      const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null");
+      assert.equal(stored.notchEdge, notchEdge);
+      assert.equal(stored.notchVisibility, notchVisibility);
+      assert.equal("topMargin" in stored, false);
+    }
+  }
+});
+
+test("repairs missing or invalid notch preferences while retaining existing choices", () => {
+  for (const invalid of [undefined, null, false, 3, "diagonal", {}]) {
+    storage.setItem(SETTINGS_KEY, JSON.stringify({
+      language: "zh-CN",
+      hideInFullscreen: false,
+      codexUsageEnabled: true,
+      notchEdge: invalid,
+      notchVisibility: invalid,
+    }));
+    const loaded = loadSettings();
+    assert.equal(loaded.notchEdge, "top");
+    assert.equal(loaded.notchVisibility, "auto");
+    assert.equal(loaded.language, "zh-CN");
+    assert.equal(loaded.hideInFullscreen, false);
+    assert.equal(loaded.codexUsageEnabled, true);
+    const stored = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null");
+    assert.equal(stored.notchEdge, "top");
+    assert.equal(stored.notchVisibility, "auto");
+  }
 });

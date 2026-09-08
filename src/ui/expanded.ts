@@ -1,8 +1,12 @@
 import type { AppViewModel } from "../app/types";
-import { formatEnergyMeasurement } from "../domain";
+import {
+  formatCodexResetCountdown,
+  formatCodexUsagePercent,
+  formatEnergyMeasurement,
+  selectCodexUsageWindows,
+} from "../domain";
 import { icon } from "../icons";
 import { copyFor } from "../i18n";
-import { shellGeometryStyle } from "../shell/geometry";
 import { escapeHtml } from "./escape";
 import {
   mediaButton,
@@ -18,7 +22,7 @@ export function renderExpandedShell(vm: AppViewModel): string {
   const copy = copyFor(vm.settings.language);
   const motionClass = vm.animateContent ? " shell-entering" : "";
   return `
-    <section class="atoll-shell expanded expanded--${vm.expandedPanel}${motionClass}" ${shellGeometryStyle("expanded")} aria-label="${copy.shell.quickControls}">
+    <section class="atoll-shell expanded expanded--${vm.expandedPanel}${motionClass}" aria-label="${copy.shell.quickControls}">
       ${renderExpandedPanel(vm)}
     </section>`;
 }
@@ -27,8 +31,12 @@ function renderExpandedPanel(vm: AppViewModel): string {
   switch (vm.expandedPanel) {
     case "media":
       return renderMediaPanel(vm);
+    case "volume":
+      return renderVolumePanel(vm);
     case "energy":
       return renderEnergyPanel(vm);
+    case "codex":
+      return renderCodexPanel(vm);
     case "sources":
       return renderSourcePanel(vm);
     case "settings":
@@ -67,6 +75,27 @@ function renderHomePanel(vm: AppViewModel): string {
         </div>
       </section>
       ${renderHomeEnergy(vm)}
+    </div>`;
+}
+
+function renderVolumePanel(vm: AppViewModel): string {
+  const copy = copyFor(vm.settings.language);
+  const percentage = Math.round(Math.min(1, Math.max(0, vm.volume.level)) * 100);
+  const muteLabel = vm.volume.muted ? copy.volume.unmute : copy.volume.mute;
+  return `
+    <div class="volume-card">
+      <header class="expanded__header volume-card__header">
+        <button class="icon-button" type="button" data-action="open-home" aria-label="${copy.shell.backHome}">${icon("back")}</button>
+        <span class="volume-card__title"><strong>${copy.volume.title}</strong><small>${copy.volume.controls}</small></span>
+      </header>
+      <div class="volume-card__controls" role="group" aria-label="${copy.volume.controls}">
+        <div class="volume-card__readout">
+          <strong class="volume-card__value"><output data-volume-value>${percentage}</output><small>%</small></strong>
+          ${vm.volume.muted ? `<small class="volume-card__muted">${copy.volume.muted}</small>` : ""}
+        </div>
+        <button class="inline-volume__mute volume-card__mute" type="button" data-action="toggle-volume-mute" aria-label="${muteLabel}" aria-pressed="${vm.volume.muted}" title="${muteLabel}">${icon(vm.volume.muted ? "volumeMute" : "volume")}</button>
+        <input class="inline-volume__range volume-card__range" type="range" min="0" max="100" step="1" value="${percentage}" data-control="system-volume" aria-label="${copy.volume.title}" aria-valuetext="${copy.volume.accessibleValue(percentage, vm.volume.muted)}" style="--volume-level:${percentage}%">
+      </div>
     </div>`;
 }
 
@@ -149,6 +178,130 @@ function renderEnergyHistoryEmptyPanel(
         <span>${copy.energy.batteryDischargeOnly}</span>
       </footer>
     </div>`;
+}
+
+function renderCodexPanel(vm: AppViewModel): string {
+  const copy = copyFor(vm.settings.language).codex;
+  const usage = vm.codexUsage;
+  const content = renderCodexPanelContent(vm);
+  const isEnabled = usage.enabled && usage.status !== "disabled";
+  const disablePending = vm.pendingCodexUsageAction === "disable";
+  return `
+    <div class="codex-card codex-card--${usage.status}" aria-label="${copy.openUsage}">
+      <header class="expanded__header codex-card__header">
+        <button class="icon-button" type="button" data-action="open-home" aria-label="${copyFor(vm.settings.language).shell.backHome}">${icon("back")}</button>
+        <span class="codex-card__title"><strong>${copy.title}</strong><small>${copy.subtitle}</small></span>
+      </header>
+      ${content}
+      <footer class="expanded__footer codex-card__footer">
+        <span class="codex-card__privacy" title="${escapeHtml(copy.sourcePrivacy)}">${escapeHtml(copy.sourcePrivacy)}</span>
+        ${
+          isEnabled
+            ? `<button class="text-button codex-card__disable" type="button" data-action="disable-codex-usage" ${disablePending ? "disabled" : ""} aria-busy="${disablePending}">${escapeHtml(disablePending ? copyFor(vm.settings.language).actions.working(copy.disable) : copy.disable)}</button>`
+            : ""
+        }
+      </footer>
+    </div>`;
+}
+
+function renderCodexPanelContent(vm: AppViewModel): string {
+  const copy = copyFor(vm.settings.language).codex;
+  const usage = vm.codexUsage;
+  const pending = vm.pendingCodexUsageAction;
+  if (usage.status === "disabled") {
+    return renderCodexState(
+      copy.enableTitle,
+      copy.enableDetail,
+      "enable-codex-usage",
+      pending === "enable" ? copyFor(vm.settings.language).actions.working(copy.enable) : copy.enable,
+      pending === "enable",
+    );
+  }
+  if (usage.status === "checking") {
+    return renderCodexState(copy.checkingTitle, copy.checkingDetail);
+  }
+  if (usage.status === "ready") {
+    return renderCodexUsage(vm);
+  }
+
+  const failure = codexFailureCopy(usage.status, vm.settings.language);
+  const action = usage.enabled ? "refresh-codex-usage" : "enable-codex-usage";
+  const actionLabel = usage.enabled
+    ? pending === "refresh"
+      ? copy.refreshing
+      : copy.refresh
+    : pending === "enable"
+      ? copyFor(vm.settings.language).actions.working(copy.enable)
+      : copy.enable;
+  return renderCodexState(
+    failure.title,
+    failure.detail,
+    action,
+    actionLabel,
+    pending === "refresh" || pending === "enable",
+  );
+}
+
+function renderCodexUsage(vm: AppViewModel): string {
+  const copy = copyFor(vm.settings.language).codex;
+  const selection = selectCodexUsageWindows(vm.codexUsage.windows);
+  const primary = selection.primary;
+  if (!primary) {
+    return renderCodexState(copy.noWindowTitle, copy.noWindowDetail);
+  }
+
+  const language = vm.settings.language;
+  const rows = [primary, selection.secondary].filter(window => window != null).map(window => {
+    const label = window.label || copy.windowFallback(window.windowDurationMins);
+    const percent = formatCodexUsagePercent(window.usedPercent, language);
+    const used = copy.usagePercent(percent);
+    const countdown = formatCodexResetCountdown(window.resetsAtMs, language, vm.now);
+    const reset = countdown ? copy.resetIn(countdown) : copy.resetUnknown;
+    const color = window.usedPercent < 50 ? "#00FF88" : window.usedPercent < 70 ? "#F2FF00" : "#FF3F00";
+    return `<div class="codex-window">
+      <div class="codex-window__label"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(reset)}</small></div>
+      <span class="codex-usage__meter" role="progressbar" aria-label="${escapeHtml(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${window.usedPercent}" aria-valuetext="${escapeHtml(used)}"><span style="background:${color};transform:scaleX(${window.usedPercent / 100})"></span></span>
+      <small class="codex-window__used" style="color:${color}">${escapeHtml(used)}</small>
+    </div>`;
+  }).join("");
+  return `<div class="codex-usage" role="group" aria-label="${escapeHtml(copy.title)}">${rows}</div>`;
+}
+
+function renderCodexState(
+  title: string,
+  detail: string,
+  action?: "enable-codex-usage" | "refresh-codex-usage",
+  actionLabel?: string,
+  actionPending = false,
+): string {
+  return `
+    <div class="codex-state" role="status">
+      <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(detail)}</small></span>
+      ${
+        action && actionLabel
+          ? `<button class="codex-state__action" type="button" data-action="${action}" ${actionPending ? "disabled" : ""} aria-busy="${actionPending}">${escapeHtml(actionLabel)}</button>`
+          : ""
+      }
+    </div>`;
+}
+
+function codexFailureCopy(
+  status: Exclude<AppViewModel["codexUsage"]["status"], "disabled" | "checking" | "ready">,
+  language: "en" | "zh-CN",
+): { title: string; detail: string } {
+  const copy = copyFor(language).codex;
+  switch (status) {
+    case "signed_out":
+      return { title: copy.signedOutTitle, detail: copy.signedOutDetail };
+    case "unsupported_auth":
+      return { title: copy.unsupportedAuthTitle, detail: copy.unsupportedAuthDetail };
+    case "cli_missing":
+      return { title: copy.cliMissingTitle, detail: copy.cliMissingDetail };
+    case "protocol_error":
+      return { title: copy.protocolErrorTitle, detail: copy.protocolErrorDetail };
+    case "unavailable":
+      return { title: copy.unavailableTitle, detail: copy.unavailableDetail };
+  }
 }
 
 function energyHistorySlots(vm: AppViewModel): EnergyHistorySlot[] {
@@ -373,7 +526,21 @@ function renderSettingsPanel(vm: AppViewModel): string {
         </div>
       </header>
       <div class="settings__rows">
+        <div class="setting-row setting-row--options">
+          <strong>${copy.notch.placement}</strong>
+          <div class="setting-options setting-options--edges" role="group" aria-label="${copy.notch.placement}">
+            ${(["top", "bottom", "left", "right"] as const).map((edge) => `<button class="setting-option" type="button" data-action="set-notch-edge" data-value="${edge}" aria-pressed="${vm.settings.notchEdge === edge}">${copy.notch.edges[edge]}</button>`).join("")}
+          </div>
+        </div>
+        <div class="setting-row setting-row--options">
+          <strong>${copy.notch.visibility}</strong>
+          <div class="setting-options" role="group" aria-label="${copy.notch.visibility}">
+            <button class="setting-option" type="button" data-action="set-notch-visibility" data-value="auto" aria-pressed="${vm.settings.notchVisibility === "auto"}">${copy.notch.automatic}</button>
+            <button class="setting-option" type="button" data-action="set-notch-visibility" data-value="always" aria-pressed="${vm.settings.notchVisibility === "always"}">${copy.notch.always}</button>
+          </div>
+        </div>
         ${settingToggle(copy.settings.fullscreen, copy.settings.fullscreenDetail, "hideInFullscreen", vm.settings.hideInFullscreen)}
       </div>
+      <p class="settings__hint">${copy.notch.hint}</p>
     </div>`;
 }

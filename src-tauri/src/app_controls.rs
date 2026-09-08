@@ -28,6 +28,7 @@ impl MenuLanguage {
         match self {
             Self::English => MenuLabels {
                 toggle: "Show or hide Atoll",
+                codex: "Codex usage",
                 settings: "Settings",
                 quit: "Exit Atoll",
                 tooltip: "Atoll — Your status, surfaced.",
@@ -42,6 +43,7 @@ impl MenuLanguage {
             },
             Self::SimplifiedChinese => MenuLabels {
                 toggle: "显示或隐藏 Atoll",
+                codex: "Codex 用量",
                 settings: "设置",
                 quit: "退出 Atoll",
                 tooltip: "Atoll — 重要状态，浮现于顶端。",
@@ -61,6 +63,7 @@ impl MenuLanguage {
 #[derive(Clone, Copy)]
 struct MenuLabels {
     toggle: &'static str,
+    codex: &'static str,
     settings: &'static str,
     quit: &'static str,
     tooltip: &'static str,
@@ -85,6 +88,7 @@ struct DebugMenuItems<R: Runtime> {
 struct LocalizedMenu<R: Runtime> {
     menu: Menu<R>,
     toggle: MenuItem<R>,
+    codex: MenuItem<R>,
     settings: MenuItem<R>,
     quit: MenuItem<R>,
     #[cfg(debug_assertions)]
@@ -94,6 +98,7 @@ struct LocalizedMenu<R: Runtime> {
 impl<R: Runtime> LocalizedMenu<R> {
     fn set_labels(&self, labels: MenuLabels) -> tauri::Result<()> {
         self.toggle.set_text(labels.toggle)?;
+        self.codex.set_text(labels.codex)?;
         self.settings.set_text(labels.settings)?;
         self.quit.set_text(labels.quit)?;
 
@@ -151,6 +156,7 @@ fn create_menu<R: Runtime>(
     labels: MenuLabels,
 ) -> tauri::Result<LocalizedMenu<R>> {
     let toggle = MenuItem::with_id(app, "toggle", labels.toggle, true, None::<&str>)?;
+    let codex = MenuItem::with_id(app, "codex", labels.codex, true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", labels.settings, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
 
@@ -179,6 +185,7 @@ fn create_menu<R: Runtime>(
             &toggle,
             &separator_one,
             &debug.submenu,
+            &codex,
             &settings,
             &separator_two,
             &quit,
@@ -188,12 +195,20 @@ fn create_menu<R: Runtime>(
     #[cfg(not(debug_assertions))]
     let menu = Menu::with_items(
         app,
-        &[&toggle, &separator_one, &settings, &separator_two, &quit],
+        &[
+            &toggle,
+            &separator_one,
+            &codex,
+            &settings,
+            &separator_two,
+            &quit,
+        ],
     )?;
 
     Ok(LocalizedMenu {
         menu,
         toggle,
+        codex,
         settings,
         quit,
         #[cfg(debug_assertions)]
@@ -225,9 +240,7 @@ pub(crate) fn setup_tray(app: &tauri::App) -> tauri::Result<QuickMenu> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    builder = builder.icon(tauri::include_image!("./icons/tray-32.png"));
     let tray_icon = builder.build(app)?;
     Ok(QuickMenu {
         tray_menu,

@@ -77,6 +77,43 @@ export interface EnergyHistoryEntry {
   partial: boolean;
 }
 
+export type CodexUsageConnectStatus =
+  | "disabled"
+  | "checking"
+  | "ready"
+  | "signed_out"
+  | "unsupported_auth"
+  | "cli_missing"
+  | "unavailable"
+  | "protocol_error";
+
+// The Codex App Server data exposed to the WebView is intentionally limited
+// to aggregated local usage windows. It must never carry account identity,
+// prompts, files, credentials, or raw App Server messages.
+export interface CodexUsageStatus {
+  enabled: boolean;
+  status: CodexUsageConnectStatus;
+  windows: readonly CodexUsageWindow[];
+  dailyUsage: readonly CodexDailyUsage[];
+  activityAvailable: boolean;
+  updatedAtMs: number | null;
+  source: "codex_app_server";
+}
+
+export interface CodexUsageWindow {
+  id: string;
+  label: string | null;
+  usedPercent: number;
+  windowDurationMins: number;
+  resetsAtMs: number;
+  reached: boolean;
+}
+
+export interface CodexDailyUsage {
+  dayKey: string;
+  tokens: number;
+}
+
 export interface NativeMediaPayload {
   title?: string;
   artist?: string;
@@ -135,6 +172,30 @@ export interface NativeEnergyHistoryPayload {
   partial?: boolean;
 }
 
+export interface NativeCodexUsagePayload {
+  enabled?: boolean;
+  status?: string;
+  windows?: readonly NativeCodexUsageWindowPayload[];
+  daily_usage?: readonly NativeCodexDailyUsagePayload[];
+  activity_available?: boolean;
+  updated_at_ms?: number | null;
+  source?: string;
+}
+
+export interface NativeCodexUsageWindowPayload {
+  id?: string;
+  label?: string | null;
+  used_percent?: number;
+  window_duration_mins?: number;
+  resets_at_ms?: number;
+  reached?: boolean;
+}
+
+export interface NativeCodexDailyUsagePayload {
+  day_key?: string;
+  tokens?: number;
+}
+
 export const DEMO_MEDIA: MediaStatus = {
   title: "Blue Hour",
   artist: "Maya Chen",
@@ -180,6 +241,33 @@ export const DEMO_ENERGY: EnergyStatus = {
   source: "battery_discharge",
 };
 
+export const DEMO_CODEX_USAGE: CodexUsageStatus = {
+  enabled: true,
+  status: "ready",
+  windows: [
+    {
+      id: "primary",
+      label: "5-hour limit",
+      usedPercent: 32,
+      windowDurationMins: 300,
+      resetsAtMs: Date.now() + 84 * 60 * 1_000,
+      reached: false,
+    },
+    {
+      id: "secondary",
+      label: "Weekly limit",
+      usedPercent: 14,
+      windowDurationMins: 10_080,
+      resetsAtMs: Date.now() + 3 * 24 * 60 * 60 * 1_000,
+      reached: false,
+    },
+  ],
+  dailyUsage: [],
+  activityAvailable: false,
+  updatedAtMs: Date.now(),
+  source: "codex_app_server",
+};
+
 export function normalizeEnergy(
   payload: NativeEnergyPayload | null | undefined,
 ): EnergyStatus {
@@ -196,6 +284,209 @@ export function normalizeEnergy(
     // The current MVP has one honest source and must not imply wall power.
     source: "battery_discharge",
   };
+}
+
+export function normalizeCodexUsage(
+  payload: NativeCodexUsagePayload | null | undefined,
+): CodexUsageStatus {
+  const enabled = payload?.enabled === true;
+  const status = normalizeCodexUsageStatus(payload?.status, enabled);
+  return {
+    enabled,
+    status,
+    windows: normalizeCodexUsageWindows(payload?.windows),
+    dailyUsage: normalizeCodexDailyUsage(payload?.daily_usage),
+    activityAvailable: payload?.activity_available === true,
+    updatedAtMs: optionalNonNegativeNumber(payload?.updated_at_ms) ?? null,
+    source: "codex_app_server",
+  };
+}
+
+function normalizeCodexUsageStatus(
+  value: string | undefined,
+  enabled: boolean,
+): CodexUsageConnectStatus {
+  switch (value) {
+    case "disabled":
+    case "checking":
+    case "ready":
+    case "signed_out":
+    case "unsupported_auth":
+    case "cli_missing":
+    case "unavailable":
+    case "protocol_error":
+      return value;
+    default:
+      return enabled ? "unavailable" : "disabled";
+  }
+}
+
+function normalizeCodexUsageWindows(
+  payload: readonly NativeCodexUsageWindowPayload[] | undefined,
+): CodexUsageWindow[] {
+  if (!Array.isArray(payload)) return [];
+
+  const windows = new Map<string, CodexUsageWindow>();
+  for (const raw of payload) {
+    const id = cleanIdentifier(raw?.id);
+    const usedPercent = optionalPercentage(raw?.used_percent);
+    const windowDurationMins = optionalPositiveInteger(raw?.window_duration_mins);
+    const resetsAtMs = optionalPositiveInteger(raw?.resets_at_ms);
+    if (!id || usedPercent === undefined || !windowDurationMins || !resetsAtMs) continue;
+    windows.set(id, {
+      id,
+      label: cleanText(raw?.label ?? undefined) || null,
+      usedPercent,
+      windowDurationMins,
+      resetsAtMs,
+      reached: raw?.reached === true,
+    });
+  }
+  // Preserve the bounded native set through normalization. Presentation picks
+  // the top two only after ranking, so source ordering cannot hide a tighter
+  // third window.
+  return [...windows.values()].slice(0, 16);
+}
+
+function normalizeCodexDailyUsage(
+  payload: readonly NativeCodexDailyUsagePayload[] | undefined,
+): CodexDailyUsage[] {
+  if (!Array.isArray(payload)) return [];
+
+  const days = new Map<string, CodexDailyUsage>();
+  for (const raw of payload) {
+    const dayKey = cleanEnergyDayKey(raw?.day_key);
+    const tokens = optionalNonNegativeNumber(raw?.tokens);
+    if (!dayKey || tokens === undefined) continue;
+    days.set(dayKey, { dayKey, tokens: Math.floor(tokens) });
+  }
+  return [...days.values()]
+    .sort((left, right) => right.dayKey.localeCompare(left.dayKey))
+    .slice(0, 7);
+}
+
+export interface CodexUsageWindowSelection {
+  primary: CodexUsageWindow | null;
+  secondary: CodexUsageWindow | null;
+}
+
+// The window nearest its effective limit leads. A deterministic tie-breaker
+// makes the UI stable when an App Server updates windows in a different order.
+export function selectCodexUsageWindows(
+  windows: readonly CodexUsageWindow[],
+): CodexUsageWindowSelection {
+  const sorted = [...windows].sort((left, right) => {
+    if (left.reached !== right.reached) return left.reached ? -1 : 1;
+    if (left.usedPercent !== right.usedPercent) return right.usedPercent - left.usedPercent;
+    if (left.resetsAtMs !== right.resetsAtMs) return left.resetsAtMs - right.resetsAtMs;
+    return left.id.localeCompare(right.id);
+  });
+  return {
+    primary: sorted[0] ?? null,
+    secondary: sorted[1] ?? null,
+  };
+}
+
+export function formatCodexUsagePercent(value: number, language: "en" | "zh-CN"): string {
+  const locale = language === "zh-CN" ? "zh-CN" : "en-US";
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value);
+}
+
+export function formatCodexResetCountdown(
+  resetsAtMs: number,
+  language: "en" | "zh-CN",
+  now = Date.now(),
+): string | null {
+  if (!Number.isFinite(resetsAtMs) || resetsAtMs <= now) return null;
+  const remainingMs = resetsAtMs - now;
+  if (remainingMs < 60_000) return language === "zh-CN" ? "少于 1 分钟" : "< 1m";
+
+  const remainingMinutes = Math.floor(remainingMs / 60_000);
+  if (remainingMinutes < 60) {
+    return language === "zh-CN" ? `${remainingMinutes} 分钟` : `${remainingMinutes}m`;
+  }
+
+  const hours = Math.floor(remainingMinutes / 60);
+  const minutes = remainingMinutes % 60;
+  if (hours < 24) {
+    return language === "zh-CN"
+      ? `${hours} 小时${minutes ? ` ${minutes} 分钟` : ""}`
+      : `${hours}h${minutes ? ` ${minutes}m` : ""}`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return language === "zh-CN"
+    ? `${days} 天${remainingHours ? ` ${remainingHours} 小时` : ""}`
+    : `${days}d${remainingHours ? ` ${remainingHours}h` : ""}`;
+}
+
+export type CodexUsageSignalKind = "threshold-80" | "threshold-95" | "reached" | "reset";
+
+export interface CodexUsageSignal {
+  kind: CodexUsageSignalKind;
+  windowId: string;
+  resetsAtMs: number;
+}
+
+export function codexUsageSignalKey(signal: CodexUsageSignal): string {
+  return `${signal.kind}:${signal.windowId}:${signal.resetsAtMs}`;
+}
+
+// Events need a real transition rather than a snapshot, otherwise reopening
+// Atoll near a limit would repeatedly interrupt the user with a stale alert.
+export function codexUsageTransition(
+  previous: CodexUsageStatus | null,
+  next: CodexUsageStatus,
+): CodexUsageSignal | null {
+  if (
+    !previous ||
+    !previous.enabled ||
+    !next.enabled ||
+    previous.status !== "ready" ||
+    next.status !== "ready"
+  ) {
+    return null;
+  }
+
+  const priorWindows = new Map(previous.windows.map((window) => [window.id, window]));
+  const signals: CodexUsageSignal[] = [];
+  for (const current of next.windows) {
+    const prior = priorWindows.get(current.id);
+    if (!prior) continue;
+
+    const snapshotAdvanced =
+      previous.updatedAtMs === null ||
+      next.updatedAtMs === null ||
+      next.updatedAtMs > previous.updatedAtMs;
+    if (
+      snapshotAdvanced &&
+      current.resetsAtMs > prior.resetsAtMs &&
+      current.usedPercent < prior.usedPercent &&
+      (prior.reached || prior.usedPercent >= 80)
+    ) {
+      signals.push({ kind: "reset", windowId: current.id, resetsAtMs: current.resetsAtMs });
+      continue;
+    }
+
+    const priorReached = prior.reached || prior.usedPercent >= 100;
+    const currentReached = current.reached || current.usedPercent >= 100;
+    if (!priorReached && currentReached) {
+      signals.push({ kind: "reached", windowId: current.id, resetsAtMs: current.resetsAtMs });
+    } else if (prior.usedPercent < 95 && current.usedPercent >= 95) {
+      signals.push({ kind: "threshold-95", windowId: current.id, resetsAtMs: current.resetsAtMs });
+    } else if (prior.usedPercent < 80 && current.usedPercent >= 80) {
+      signals.push({ kind: "threshold-80", windowId: current.id, resetsAtMs: current.resetsAtMs });
+    }
+  }
+
+  const priority: Record<CodexUsageSignalKind, number> = {
+    reached: 4,
+    "threshold-95": 3,
+    "threshold-80": 2,
+    reset: 1,
+  };
+  return signals.sort((left, right) => priority[right.kind] - priority[left.kind])[0] ?? null;
 }
 
 function normalizeEnergyHistory(
@@ -367,5 +658,17 @@ function cleanEnergyDayKey(value: string | null | undefined): string {
 
 function optionalNonNegativeNumber(value: number | null | undefined): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
+  return value;
+}
+
+function optionalPositiveInteger(value: number | null | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) return undefined;
+  return value;
+}
+
+function optionalPercentage(value: number | null | undefined): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
+    return undefined;
+  }
   return value;
 }

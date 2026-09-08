@@ -3,24 +3,44 @@ use std::sync::{
     Mutex, MutexGuard,
 };
 
+use serde::Deserialize;
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum NotchEdge {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub(crate) struct RegionPoint {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub(crate) struct ShellRegion {
+    pub points: Vec<RegionPoint>,
+}
+
+/// Final logical geometry is retained while hidden and throughout animation.
+/// Display recovery restores this target, never a partially animated frame.
+#[derive(Clone, Debug)]
+pub(crate) struct ShellLayout {
+    pub width: f64,
+    pub height: f64,
+    pub edge: NotchEdge,
+    pub regions: Vec<ShellRegion>,
+    pub transition_id: u64,
+}
+
+#[derive(Default)]
 pub(crate) struct RuntimeState {
     transition_epoch: AtomicU64,
     window_mutation: Mutex<()>,
-    top_margin_bits: AtomicU64,
-    corner_radius_bits: AtomicU64,
-}
-
-impl Default for RuntimeState {
-    fn default() -> Self {
-        Self {
-            transition_epoch: AtomicU64::new(0),
-            window_mutation: Mutex::new(()),
-            // The frontend owns the edge-attached contract: its full shell
-            // host begins twelve DIP above the monitor edge.
-            top_margin_bits: AtomicU64::new((-12.0_f64).to_bits()),
-            corner_radius_bits: AtomicU64::new(12.0_f64.to_bits()),
-        }
-    }
+    shell_layout: Mutex<Option<ShellLayout>>,
 }
 
 pub(crate) fn next_transition_epoch(state: &RuntimeState) -> u64 {
@@ -38,22 +58,17 @@ pub(crate) fn lock_window_mutation(state: &RuntimeState) -> MutexGuard<'_, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-pub(crate) fn set_top_margin(state: &RuntimeState, top_margin: f64) {
+pub(crate) fn set_shell_layout(state: &RuntimeState, layout: ShellLayout) {
+    *state
+        .shell_layout
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(layout);
+}
+
+pub(crate) fn shell_layout(state: &RuntimeState) -> Option<ShellLayout> {
     state
-        .top_margin_bits
-        .store(top_margin.to_bits(), Ordering::SeqCst);
-}
-
-pub(crate) fn top_margin(state: &RuntimeState) -> f64 {
-    f64::from_bits(state.top_margin_bits.load(Ordering::SeqCst))
-}
-
-pub(crate) fn set_corner_radius(state: &RuntimeState, corner_radius: f64) {
-    state
-        .corner_radius_bits
-        .store(corner_radius.to_bits(), Ordering::SeqCst);
-}
-
-pub(crate) fn corner_radius(state: &RuntimeState) -> f64 {
-    f64::from_bits(state.corner_radius_bits.load(Ordering::SeqCst))
+        .shell_layout
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
 }

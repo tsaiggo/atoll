@@ -12,36 +12,53 @@ use tauri::{LogicalPosition, LogicalSize};
 use windows::Win32::Foundation::HWND;
 
 use crate::runtime::{
-    corner_radius, is_current_transition, lock_window_mutation, next_transition_epoch,
-    set_corner_radius, set_top_margin, top_margin, RuntimeState,
+    is_current_transition, lock_window_mutation, next_transition_epoch, set_shell_layout,
+    shell_layout, NotchEdge, RuntimeState, ShellLayout, ShellRegion,
 };
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WorkArea {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct MonitorSignature {
-    x: i32,
-    y: i32,
-    width: u32,
-    height: u32,
+    bounds: WorkArea,
+    work_area: WorkArea,
     scale_bits: u64,
 }
 
 const SHELL_FRAME_INTERVAL: Duration = Duration::from_millis(16);
+const MAX_SHELL_DIMENSION: f64 = 4096.0;
+const MAX_REGIONS: usize = 6;
+const MAX_REGION_POINTS: usize = 64;
+const POINT_TOLERANCE: f64 = 0.000_001;
 
 #[derive(Clone, Copy)]
 struct WindowPlacement {
-    monitor_x: i32,
-    monitor_y: i32,
-    monitor_width: u32,
+    bounds: WorkArea,
+    work_area: WorkArea,
     scale: f64,
     #[cfg(target_os = "windows")]
-    // HWND is a raw pointer and therefore not Send. The frame worker owns the
-    // integer handle value and rehydrates it only at the Win32 call boundary.
+    // HWND itself is not Send. Rehydrate this integer only at the Win32 boundary.
     hwnd: isize,
 }
 
-// The Status Island surface is rendered inside the webview. Native code owns
-// the exact-fit HWND policy and four-corner region so no rectangular surface
-// can appear outside the CSS silhouette.
+impl WindowPlacement {
+    fn signature(self) -> MonitorSignature {
+        MonitorSignature {
+            bounds: self.bounds,
+            work_area: self.work_area,
+            scale_bits: self.scale.to_bits(),
+        }
+    }
+}
+
+// SVG and the native region consume the same frontend polygons. Their union
+// includes only painted surfaces and explicit pointer corridors.
 
 #[cfg(target_os = "windows")]
 fn apply_dwm_frame_policy(hwnd: windows::Win32::Foundation::HWND, dark_mode: bool) {
@@ -124,6 +141,27 @@ pub fn apply_native_window_policy(_window: &WebviewWindow) -> Result<(), String>
 }
 
 fn show_without_focus(window: &WebviewWindow) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, SW_SHOWNOACTIVATE,
+            WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        };
+        let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+        unsafe {
+            // Wry's generic show rebuilds styles from its own flags and drops
+            // our tool-window bit. Keep the edge surface out of Alt-Tab while
+            // presenting compositor frames without activating it.
+            let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            let wanted = (style & !WS_EX_APPWINDOW.0) | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
+            if style != wanted {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted as isize);
+            }
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
     window.show().map_err(|error| error.to_string())
 }
 
@@ -144,40 +182,31 @@ pub fn start_display_watcher(app: AppHandle) {
         let mut previous: Option<MonitorSignature> = None;
         loop {
             if let Some(window) = app.get_webview_window("main") {
-                let signature =
-                    window
-                        .primary_monitor()
-                        .ok()
-                        .flatten()
-                        .map(|monitor| MonitorSignature {
-                            x: monitor.position().x,
-                            y: monitor.position().y,
-                            width: monitor.size().width,
-                            height: monitor.size().height,
-                            scale_bits: monitor.scale_factor().to_bits(),
-                        });
-
-                if previous.is_some() && signature != previous {
-                    let runtime = window.state::<RuntimeState>();
-                    let _mutation = lock_window_mutation(&runtime);
-                    if let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) {
-                        let logical = size.to_logical::<f64>(scale);
-                        let margin = top_margin(&runtime);
-                        let target_radius = corner_radius(&runtime);
-                        if let Err(error) = resize_and_position(
-                            &window,
-                            logical.width,
-                            logical.height,
-                            margin,
-                            target_radius,
-                        ) {
-                            log::warn!(
-                                "Unable to reposition Atoll after a display change: {error}"
-                            );
+                if let Ok(placement) = capture_window_placement(&window) {
+                    let signature = placement.signature();
+                    if previous.is_some() && previous != Some(signature) {
+                        let runtime = window.state::<RuntimeState>();
+                        let _mutation = lock_window_mutation(&runtime);
+                        if let Some(layout) = shell_layout(&runtime) {
+                            // Cancel workers holding the old monitor/scale snapshot before
+                            // restoring the final layout. Resizing never shows a hidden HWND.
+                            next_transition_epoch(&runtime);
+                            match resize_and_position_at(
+                                &window,
+                                placement,
+                                layout.width,
+                                layout.height,
+                                &layout,
+                            ) {
+                                Ok(()) => emit_shell_settled(&window, layout.transition_id),
+                                Err(error) => log::warn!(
+                                    "Unable to reposition Atoll after a display change: {error}"
+                                ),
+                            }
                         }
                     }
+                    previous = Some(signature);
                 }
-                previous = signature;
             }
             thread::sleep(Duration::from_secs(2));
         }
@@ -186,20 +215,17 @@ pub fn start_display_watcher(app: AppHandle) {
 
 struct ShellRequest {
     shell: String,
-    width: f64,
-    height: f64,
-    corner_radius: f64,
+    layout: ShellLayout,
     animated: bool,
-    top_margin: f64,
     theme: String,
-    transition_id: u64,
 }
 
-// Tauri exposes command arguments as a flat IPC contract, so this boundary intentionally
-// mirrors the eight values sent by src/platform/native.ts.
+// Tauri maps camelCase frontend properties to these flat snake_case arguments.
+// corner_radius and top_margin are accepted for IPC compatibility; the supplied
+// polygons and selected work-area edge now own the contour and positioning.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn set_window_shell(
+pub(crate) async fn set_window_shell(
     window: WebviewWindow,
     shell: String,
     width: f64,
@@ -207,58 +233,99 @@ pub async fn set_window_shell(
     corner_radius: f64,
     animated: bool,
     top_margin: f64,
+    edge: NotchEdge,
+    regions: Vec<ShellRegion>,
     theme: String,
     transition_id: u64,
 ) -> Result<(), String> {
-    let request = ShellRequest {
-        shell,
+    if !matches!(shell.as_str(), "hidden" | "reef" | "compact" | "expanded") {
+        return Err("Unknown Atoll shell state".to_string());
+    }
+    if !corner_radius.is_finite() || !top_margin.is_finite() {
+        return Err("Shell compatibility dimensions must be finite".to_string());
+    }
+    let layout = ShellLayout {
         width,
         height,
-        corner_radius,
-        animated,
-        top_margin,
-        theme,
+        edge,
+        regions,
         transition_id,
+    };
+    validate_shell_layout(&layout)?;
+    let request = ShellRequest {
+        shell,
+        layout,
+        animated,
+        theme,
     };
     tauri::async_runtime::spawn_blocking(move || accept_window_shell(window, request))
         .await
         .map_err(|error| error.to_string())?
 }
 
+fn validate_shell_layout(layout: &ShellLayout) -> Result<(), String> {
+    for dimension in [layout.width, layout.height] {
+        if !dimension.is_finite() || !(1.0..=MAX_SHELL_DIMENSION).contains(&dimension) {
+            return Err("Shell dimensions must be finite and between 1 and 4096 DIP".to_string());
+        }
+    }
+    if layout.regions.is_empty() || layout.regions.len() > MAX_REGIONS {
+        return Err("Shell geometry requires between 1 and 6 polygon regions".to_string());
+    }
+    for region in &layout.regions {
+        if !(3..=MAX_REGION_POINTS).contains(&region.points.len()) {
+            return Err("Each shell polygon requires between 3 and 64 points".to_string());
+        }
+        for point in &region.points {
+            if !point.x.is_finite()
+                || !point.y.is_finite()
+                || point.x < -POINT_TOLERANCE
+                || point.y < -POINT_TOLERANCE
+                || point.x > layout.width + POINT_TOLERANCE
+                || point.y > layout.height + POINT_TOLERANCE
+            {
+                return Err(
+                    "Shell polygon coordinates must be finite and inside the host".to_string(),
+                );
+            }
+        }
+        let twice_area: f64 = region
+            .points
+            .iter()
+            .zip(region.points.iter().cycle().skip(1))
+            .map(|(a, b)| a.x * b.y - b.x * a.y)
+            .sum();
+        if twice_area.abs() <= POINT_TOLERANCE {
+            return Err("Shell polygons must enclose a nonzero area".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(), String> {
     let ShellRequest {
         shell,
-        width,
-        height,
-        corner_radius: requested_corner_radius,
+        layout,
         animated,
-        top_margin,
         theme,
-        transition_id,
     } = request;
-    let target_corner_radius = requested_corner_radius.max(0.0);
-
-    #[cfg(target_os = "windows")]
-    {
-        let dark_mode = !theme.eq_ignore_ascii_case("light");
-        let hwnd = window.hwnd().map_err(|error| error.to_string())?;
-        apply_dwm_frame_policy(hwnd, dark_mode);
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    let _ = theme;
-    let (epoch, start_width, start_height, start_corner_radius, placement) = {
-        // Keep accepting a newer request and each native mutation mutually ordered.
-        // An older frame can finish before this block, but it can never write after it.
+    let (epoch, start_width, start_height, placement) = {
         let runtime = window.state::<RuntimeState>();
         let _mutation = lock_window_mutation(&runtime);
         let epoch = next_transition_epoch(&runtime);
-        let start_corner_radius = corner_radius(&runtime);
-        set_top_margin(&runtime, top_margin);
+        set_shell_layout(&runtime, layout.clone());
         if shell == "hidden" {
             window.hide().map_err(|error| error.to_string())?;
             return Ok(());
         }
+
+        #[cfg(target_os = "windows")]
+        apply_dwm_frame_policy(
+            window.hwnd().map_err(|error| error.to_string())?,
+            !theme.eq_ignore_ascii_case("light"),
+        );
+        #[cfg(not(target_os = "windows"))]
+        let _ = theme;
 
         let placement = capture_window_placement(&window)?;
         let current = window
@@ -269,23 +336,24 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
             epoch,
             current.width.max(1.0),
             current.height.max(1.0),
-            start_corner_radius,
             placement,
         )
     };
-    let steps = if animated {
-        if width * height < start_width * start_height {
-            11
+    let changed_size =
+        (layout.width - start_width).abs() > 0.5 || (layout.height - start_height).abs() > 0.5;
+    let steps = if animated && changed_size {
+        if layout.width * layout.height < start_width * start_height {
+            16
         } else {
-            15
+            26
         }
     } else {
         1
     };
-    let (first_width, first_height, first_corner_radius) = if animated {
-        (start_width, start_height, start_corner_radius)
+    let (first_width, first_height) = if steps > 1 {
+        (start_width, start_height)
     } else {
-        (width, height, target_corner_radius)
+        (layout.width, layout.height)
     };
 
     {
@@ -294,67 +362,47 @@ fn accept_window_shell(window: WebviewWindow, request: ShellRequest) -> Result<(
         if !is_current_transition(&runtime, epoch) {
             return Ok(());
         }
-        set_corner_radius(&runtime, first_corner_radius);
-
-        resize_and_position_at(
-            &window,
-            placement,
-            first_width,
-            first_height,
-            top_margin,
-            first_corner_radius,
-        )?;
+        resize_and_position_at(&window, placement, first_width, first_height, &layout)?;
         show_without_focus(&window)?;
+        if steps == 1 {
+            emit_shell_settled(&window, layout.transition_id);
+        }
     }
 
     if steps > 1 {
-        let cloned_window = window.clone();
         thread::spawn(move || {
             let transition_started = Instant::now();
             for step in 1..=steps {
-                // Anchor each frame to the original deadline instead of sleeping
-                // after work. Window and region updates therefore cannot stretch
-                // the transition into a visibly uneven 20ms+ cadence.
-                let deadline = transition_started
-                    + Duration::from_millis(SHELL_FRAME_INTERVAL.as_millis() as u64 * step as u64);
+                let deadline = transition_started + SHELL_FRAME_INTERVAL * step;
                 if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
                     thread::sleep(remaining);
                 }
-                let (frame_width, frame_height) =
-                    shell_frame_geometry(step, steps, start_width, start_height, width, height);
-                let frame_corner_radius = shell_frame_corner_radius(
+                let (width, height) = shell_frame_geometry(
                     step,
                     steps,
-                    start_corner_radius,
-                    target_corner_radius,
+                    start_width,
+                    start_height,
+                    layout.width,
+                    layout.height,
                 );
-                let runtime = cloned_window.state::<RuntimeState>();
+                let runtime = window.state::<RuntimeState>();
                 let _mutation = lock_window_mutation(&runtime);
                 if !is_current_transition(&runtime, epoch) {
                     return;
                 }
-                set_corner_radius(&runtime, frame_corner_radius);
-                if let Err(error) = resize_and_position_at(
-                    &cloned_window,
-                    placement,
-                    frame_width,
-                    frame_height,
-                    top_margin,
-                    frame_corner_radius,
-                ) {
+                if let Err(error) =
+                    resize_and_position_at(&window, placement, width, height, &layout)
+                {
                     log::warn!("Unable to resize Atoll to the {shell} shell: {error}");
                     return;
                 }
             }
-            let runtime = cloned_window.state::<RuntimeState>();
+            let runtime = window.state::<RuntimeState>();
             let _mutation = lock_window_mutation(&runtime);
-            if !is_current_transition(&runtime, epoch) {
-                return;
+            if is_current_transition(&runtime, epoch) {
+                emit_shell_settled(&window, layout.transition_id);
             }
-            emit_shell_settled(&cloned_window, transition_id);
         });
-    } else {
-        emit_shell_settled(&window, transition_id);
     }
     Ok(())
 }
@@ -367,23 +415,21 @@ fn shell_frame_geometry(
     target_width: f64,
     target_height: f64,
 ) -> (f64, f64) {
-    let progress = step as f64 / steps.max(1) as f64;
-    let eased = progress * progress * (3.0 - 2.0 * progress);
+    let progress = (step as f64 / steps.max(1) as f64).clamp(0.0, 1.0);
+    // A damped spring approximates Codenotch's response 0.42 / damping 0.78.
+    // Normalization lands exactly on the final geometry at the last deadline.
+    let response = |t: f64| {
+        let damping = 0.78_f64;
+        let frequency = std::f64::consts::TAU;
+        let ratio = (1.0 - damping * damping).sqrt();
+        let phase = frequency * ratio * t;
+        1.0 - (-damping * frequency * t).exp() * (phase.cos() + damping / ratio * phase.sin())
+    };
+    let eased = response(progress) / response(1.0);
     (
-        start_width + (target_width - start_width) * eased,
-        start_height + (target_height - start_height) * eased,
+        (start_width + (target_width - start_width) * eased).max(1.0),
+        (start_height + (target_height - start_height) * eased).max(1.0),
     )
-}
-
-fn shell_frame_corner_radius(
-    step: u32,
-    steps: u32,
-    start_corner_radius: f64,
-    target_corner_radius: f64,
-) -> f64 {
-    let progress = step as f64 / steps.max(1) as f64;
-    let eased = progress * progress * (3.0 - 2.0 * progress);
-    start_corner_radius + (target_corner_radius - start_corner_radius) * eased
 }
 
 fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, String> {
@@ -391,57 +437,124 @@ fn capture_window_placement(window: &WebviewWindow) -> Result<WindowPlacement, S
         .primary_monitor()
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "No primary display is available".to_string())?;
-    let position = monitor.position();
-    let size = monitor.size();
+    let scale = monitor.scale_factor();
+    if !scale.is_finite() || !(0.1..=16.0).contains(&scale) {
+        return Err("Primary display has an invalid scale factor".to_string());
+    }
     #[cfg(target_os = "windows")]
-    let hwnd = window.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    {
+        use windows::Win32::{
+            Foundation::POINT,
+            Graphics::Gdi::{
+                GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+            },
+        };
+        let position = monitor.position();
+        let handle = unsafe {
+            MonitorFromPoint(
+                POINT {
+                    x: position.x,
+                    y: position.y,
+                },
+                MONITOR_DEFAULTTOPRIMARY,
+            )
+        };
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if handle.is_invalid() || !unsafe { GetMonitorInfoW(handle, &mut info) }.as_bool() {
+            return Err("Unable to read the primary display work area".to_string());
+        }
+        let bounds = WorkArea {
+            left: info.rcMonitor.left,
+            top: info.rcMonitor.top,
+            right: info.rcMonitor.right,
+            bottom: info.rcMonitor.bottom,
+        };
+        let work_area = WorkArea {
+            left: info.rcWork.left,
+            top: info.rcWork.top,
+            right: info.rcWork.right,
+            bottom: info.rcWork.bottom,
+        };
+        validate_work_area(work_area)?;
+        Ok(WindowPlacement {
+            bounds,
+            work_area,
+            scale,
+            hwnd: window.hwnd().map_err(|error| error.to_string())?.0 as isize,
+        })
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let position = monitor.position();
+        let size = monitor.size();
+        let bounds = WorkArea {
+            left: position.x,
+            top: position.y,
+            right: (i64::from(position.x) + i64::from(size.width))
+                .try_into()
+                .map_err(|_| "Display width is out of range".to_string())?,
+            bottom: (i64::from(position.y) + i64::from(size.height))
+                .try_into()
+                .map_err(|_| "Display height is out of range".to_string())?,
+        };
+        validate_work_area(bounds)?;
+        Ok(WindowPlacement {
+            bounds,
+            work_area: bounds,
+            scale,
+        })
+    }
+}
 
-    Ok(WindowPlacement {
-        monitor_x: position.x,
-        monitor_y: position.y,
-        monitor_width: size.width,
-        scale: monitor.scale_factor(),
-        #[cfg(target_os = "windows")]
-        hwnd,
-    })
+fn validate_work_area(area: WorkArea) -> Result<(), String> {
+    if area.right <= area.left || area.bottom <= area.top {
+        Err("Primary display has an empty work area".to_string())
+    } else {
+        Ok(())
+    }
 }
 
 fn physical_window_frame(
-    monitor_x: i32,
-    monitor_y: i32,
-    monitor_width: u32,
+    work_area: WorkArea,
     scale: f64,
     width: f64,
     height: f64,
-    top_margin: f64,
-) -> (i32, i32, i32, i32) {
+    edge: NotchEdge,
+) -> Result<(i32, i32, i32, i32), String> {
+    validate_work_area(work_area)?;
     let physical_width = (width * scale).round().max(1.0) as i32;
     let physical_height = (height * scale).round().max(1.0) as i32;
-    let x = monitor_x + ((monitor_width as f64 - physical_width as f64) / 2.0).round() as i32;
-    // `height` is the full host height (44/68/188 DIP). The frontend provides
-    // `top_margin = -12` for its edge-attached shells, so Windows crops the
-    // host's top corners at the monitor boundary. Do not add a native offset:
-    // display recovery must use the same frontend-owned anchor.
-    let y = monitor_y + (top_margin * scale).round() as i32;
-    (x, y, physical_width, physical_height)
-}
-
-fn resize_and_position(
-    window: &WebviewWindow,
-    width: f64,
-    height: f64,
-    top_margin: f64,
-    target_corner_radius: f64,
-) -> Result<(), String> {
-    let placement = capture_window_placement(window)?;
-    resize_and_position_at(
-        window,
-        placement,
-        width,
-        height,
-        top_margin,
-        target_corner_radius,
-    )
+    let left = i64::from(work_area.left);
+    let top = i64::from(work_area.top);
+    let available_width = i64::from(work_area.right) - left;
+    let available_height = i64::from(work_area.bottom) - top;
+    let center_x =
+        left + ((available_width - i64::from(physical_width)) as f64 / 2.0).round() as i64;
+    let center_y =
+        top + ((available_height - i64::from(physical_height)) as f64 / 2.0).round() as i64;
+    let (x, y) = match edge {
+        NotchEdge::Top => (center_x, top),
+        NotchEdge::Bottom => (
+            center_x,
+            i64::from(work_area.bottom) - i64::from(physical_height),
+        ),
+        NotchEdge::Left => (left, center_y),
+        NotchEdge::Right => (
+            i64::from(work_area.right) - i64::from(physical_width),
+            center_y,
+        ),
+    };
+    Ok((
+        x.try_into()
+            .map_err(|_| "Shell x position is out of range".to_string())?,
+        y.try_into()
+            .map_err(|_| "Shell y position is out of range".to_string())?,
+        physical_width,
+        physical_height,
+    ))
 }
 
 fn resize_and_position_at(
@@ -449,32 +562,29 @@ fn resize_and_position_at(
     placement: WindowPlacement,
     width: f64,
     height: f64,
-    top_margin: f64,
-    target_corner_radius: f64,
+    layout: &ShellLayout,
 ) -> Result<(), String> {
     let (x, y, physical_width, physical_height) = physical_window_frame(
-        placement.monitor_x,
-        placement.monitor_y,
-        placement.monitor_width,
+        placement.work_area,
         placement.scale,
         width,
         height,
-        top_margin,
-    );
+        layout.edge,
+    )?;
 
     #[cfg(target_os = "windows")]
     {
-        use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+        use windows::Win32::{
+            Foundation::RECT,
+            UI::WindowsAndMessaging::{
+                GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_NOZORDER,
+            },
         };
-
-        // One SetWindowPos keeps position and size in the same compositor
-        // transaction. The supported Tauri calls previously dispatched them
-        // separately for every frame, which is especially noticeable on a
-        // transparent WebView while Windows is rebuilding its surface.
+        let _ = window;
+        let hwnd = HWND(placement.hwnd as *mut std::ffi::c_void);
         unsafe {
             SetWindowPos(
-                HWND(placement.hwnd as *mut std::ffi::c_void),
+                hwnd,
                 None,
                 x,
                 y,
@@ -483,11 +593,20 @@ fn resize_and_position_at(
                 SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER,
             )
             .map_err(|error| error.to_string())?;
+            let mut actual = RECT::default();
+            GetWindowRect(hwnd, &mut actual).map_err(|error| error.to_string())?;
+            apply_window_region(
+                hwnd,
+                actual.right - actual.left,
+                actual.bottom - actual.top,
+                layout,
+            )?;
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = (physical_width, physical_height);
         window
             .set_size(LogicalSize::new(width, height))
             .map_err(|error| error.to_string())?;
@@ -498,354 +617,322 @@ fn resize_and_position_at(
             ))
             .map_err(|error| error.to_string())?;
     }
-
-    apply_shell_region_at(window, placement, width, height, target_corner_radius)?;
     Ok(())
 }
 
-#[allow(dead_code)]
-fn apply_shell_region_at(
-    window: &WebviewWindow,
-    placement: WindowPlacement,
-    width: f64,
-    height: f64,
-    target_corner_radius: f64,
-) -> Result<(), String> {
-    let effective_radius = effective_corner_radius(target_corner_radius, width, height);
-    #[cfg(target_os = "windows")]
-    {
-        let _ = window;
-        apply_window_region(
-            placement.hwnd,
-            placement.scale,
-            width,
-            height,
-            effective_radius,
-        )
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = placement;
-        apply_window_region(window, width, height, effective_radius)
-    }
-}
-
-fn effective_corner_radius(target_radius: f64, width: f64, height: f64) -> f64 {
-    target_radius
-        .max(0.0)
-        .min((height.max(0.0) / 2.0).max(0.0))
-        .min((width.max(0.0) / 2.0).max(0.0))
-}
-
-#[cfg(target_os = "windows")]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct WindowRegionBand {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-}
-
-#[cfg(target_os = "windows")]
-#[derive(Debug, PartialEq, Eq)]
-struct WindowRegionBands {
+fn physical_region_points(
+    region: &ShellRegion,
     physical_width: i32,
     physical_height: i32,
-    bands: Vec<WindowRegionBand>,
+    target_width: f64,
+    target_height: f64,
+) -> Vec<(i32, i32)> {
+    region
+        .points
+        .iter()
+        .map(|point| {
+            (
+                (point.x.clamp(0.0, target_width) * f64::from(physical_width) / target_width)
+                    .round() as i32,
+                (point.y.clamp(0.0, target_height) * f64::from(physical_height) / target_height)
+                    .round() as i32,
+            )
+        })
+        .collect()
 }
 
 #[cfg(target_os = "windows")]
-fn rounded_rect_row_inset(radius: f64, physical_height: i32, y: i32) -> i32 {
-    if radius <= f64::EPSILON {
-        return 0;
-    }
-    let top_corner = (y as f64) < radius;
-    let bottom_corner = (y as f64) >= physical_height as f64 - radius;
-    if !top_corner && !bottom_corner {
-        return 0;
-    }
-
-    let center_y = if top_corner {
-        radius
-    } else {
-        physical_height as f64 - radius
-    };
-    let dy = (center_y - (y as f64 + 0.5)).abs().min(radius);
-    // The region must trace the same ideal corner circle as the CSS
-    // border-radius. A five-percent-coverage threshold made the native clip two
-    // pixels squarer than the styled corner, exposing the rectangular window
-    // surface outside the CSS silhouette. Sampling the circle at the row center
-    // keeps the native clip and the CSS contour on the same pixel boundary.
-    (radius - (radius * radius - dy * dy).max(0.0).sqrt()).round() as i32
-}
-
-#[cfg(target_os = "windows")]
-fn window_region_bands(
-    width: f64,
-    height: f64,
-    logical_radius: f64,
-    scale: f64,
-) -> WindowRegionBands {
-    let physical_width = (width * scale).round().max(1.0) as i32;
-    let physical_height = (height * scale).round().max(1.0) as i32;
-    let physical_radius = (logical_radius * scale)
-        .max(0.0)
-        .min(physical_height as f64 / 2.0)
-        .min(physical_width as f64 / 2.0);
-    let mut bands: Vec<WindowRegionBand> = Vec::new();
-
-    for y in 0..physical_height {
-        // Each band clips the window surface exactly at the CSS silhouette so
-        // no rectangular corner remains outside the styled radius.
-        let inset =
-            rounded_rect_row_inset(physical_radius, physical_height, y).min(physical_width / 2);
-        let right = physical_width - inset;
-
-        if let Some(previous) = bands.last_mut() {
-            if previous.left == inset && previous.right == right && previous.bottom == y {
-                previous.bottom = y + 1;
-                continue;
-            }
-        }
-        bands.push(WindowRegionBand {
-            left: inset,
-            top: y,
-            right,
-            bottom: y + 1,
-        });
-    }
-
-    WindowRegionBands {
-        physical_width,
-        physical_height,
-        bands,
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn apply_window_region(
-    hwnd: isize,
-    scale: f64,
-    width: f64,
-    height: f64,
-    logical_radius: f64,
+unsafe fn apply_window_region(
+    hwnd: HWND,
+    physical_width: i32,
+    physical_height: i32,
+    layout: &ShellLayout,
 ) -> Result<(), String> {
-    use windows::Win32::Graphics::Gdi::{
-        CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_ERROR, RGN_OR,
+    use windows::Win32::{
+        Foundation::POINT,
+        Graphics::Gdi::{
+            CombineRgn, CreatePolygonRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_ERROR,
+            RGN_OR, WINDING,
+        },
     };
-
-    let geometry = window_region_bands(width, height, logical_radius, scale);
-    let first = geometry
-        .bands
-        .first()
-        .ok_or_else(|| "Unable to create an empty Atoll click region".to_string())?;
-
-    unsafe {
-        let hwnd = HWND(hwnd as *mut std::ffi::c_void);
-        let region = CreateRectRgn(first.left, first.top, first.right, first.bottom);
-        if region.is_invalid() {
-            return Err("Unable to create the Atoll click region".to_string());
-        }
-
-        for band in geometry.bands.iter().skip(1) {
-            let part = CreateRectRgn(band.left, band.top, band.right, band.bottom);
-            if part.is_invalid() {
-                let _ = DeleteObject(region.into());
-                return Err("Unable to create an Atoll corner band".to_string());
-            }
-            let combined = CombineRgn(Some(region), Some(region), Some(part), RGN_OR);
-            let _ = DeleteObject(part.into());
-            if combined == RGN_ERROR {
-                let _ = DeleteObject(region.into());
-                return Err("Unable to combine the Atoll corner region".to_string());
-            }
-        }
-
-        // SetWindowPos has already invalidated this frame. Avoid asking GDI for
-        // a second synchronous repaint solely for the hit-test contour.
-        let set_result = SetWindowRgn(hwnd, Some(region), false);
-        if set_result == 0 {
+    if physical_width <= 0 || physical_height <= 0 {
+        return Err("Cannot apply polygons to an empty native host".to_string());
+    }
+    let region = CreateRectRgn(0, 0, 0, 0);
+    if region.is_invalid() {
+        return Err("Unable to create the Atoll click region".to_string());
+    }
+    for polygon in &layout.regions {
+        let points: Vec<POINT> = physical_region_points(
+            polygon,
+            physical_width,
+            physical_height,
+            layout.width,
+            layout.height,
+        )
+        .into_iter()
+        .map(|(x, y)| POINT { x, y })
+        .collect();
+        let part = CreatePolygonRgn(&points, WINDING);
+        if part.is_invalid() {
             let _ = DeleteObject(region.into());
-            return Err("Unable to apply the Atoll click region".to_string());
+            return Err("Unable to create an Atoll polygon region".to_string());
         }
+        let combined = CombineRgn(Some(region), Some(region), Some(part), RGN_OR);
+        let _ = DeleteObject(part.into());
+        if combined == RGN_ERROR {
+            let _ = DeleteObject(region.into());
+            return Err("Unable to combine Atoll polygon regions".to_string());
+        }
+    }
+    // The OS owns the HRGN after success. On failure we still own and free it.
+    // Unused transparent host space remains outside this union and click-through.
+    if SetWindowRgn(hwnd, Some(region), false) == 0 {
+        let _ = DeleteObject(region.into());
+        return Err("Unable to apply the Atoll click region".to_string());
     }
     Ok(())
 }
 
-#[cfg(not(target_os = "windows"))]
-fn apply_window_region(
-    _window: &WebviewWindow,
-    _width: f64,
-    _height: f64,
-    _logical_radius: f64,
-) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(test)]
 mod tests {
-    use super::{
-        effective_corner_radius, physical_window_frame, shell_frame_corner_radius,
-        shell_frame_geometry, window_region_bands, WindowRegionBands,
-    };
+    use super::*;
+    use crate::runtime::RegionPoint;
 
-    const EDGE_ATTACHED_TOP_MARGIN: f64 = -12.0;
-
-    fn contains(region: &WindowRegionBands, x: i32, y: i32) -> bool {
-        region
-            .bands
-            .iter()
-            .any(|band| x >= band.left && x < band.right && y >= band.top && y < band.bottom)
-    }
-
-    fn row_inset(region: &WindowRegionBands, y: i32) -> i32 {
-        region
-            .bands
-            .iter()
-            .find(|band| y >= band.top && y < band.bottom)
-            .map(|band| band.left)
-            .expect("every physical row should have a hit region band")
-    }
-
-    #[test]
-    fn effective_corner_radius_matches_css_constraints() {
-        assert_eq!(effective_corner_radius(12.0, 96.0, 44.0), 12.0);
-        assert_eq!(effective_corner_radius(12.0, 256.0, 68.0), 12.0);
-        assert_eq!(effective_corner_radius(12.0, 400.0, 188.0), 12.0);
-        assert_eq!(effective_corner_radius(16.0, 256.0, 12.0), 6.0);
-        assert_eq!(effective_corner_radius(30.0, 40.0, 80.0), 20.0);
-    }
-
-    #[test]
-    fn shell_animation_morphs_geometry_and_radius_on_the_same_curve() {
-        let start = (96.0, 44.0, 12.0);
-        let target = (400.0, 188.0, 12.0);
-        let steps = 12;
-        let mut previous = start;
-        for step in 0..=steps {
-            let (width, height) =
-                shell_frame_geometry(step, steps, start.0, start.1, target.0, target.1);
-            let radius = shell_frame_corner_radius(step, steps, start.2, target.2);
-            assert!(width >= previous.0);
-            assert!(height >= previous.1);
-            assert!(radius >= previous.2);
-            assert!(radius <= height / 2.0);
-            previous = (width, height, radius);
+    fn rectangle(x: f64, y: f64, width: f64, height: f64) -> ShellRegion {
+        ShellRegion {
+            points: vec![
+                RegionPoint { x, y },
+                RegionPoint { x: x + width, y },
+                RegionPoint {
+                    x: x + width,
+                    y: y + height,
+                },
+                RegionPoint { x, y: y + height },
+            ],
         }
-        assert_eq!(previous, target);
     }
 
-    #[test]
-    fn shell_frames_stay_centered_in_physical_pixels() {
-        for (width, height) in [(96.0, 44.0), (256.0, 68.0), (400.0, 188.0)] {
-            let (x, y, physical_width, physical_height) =
-                physical_window_frame(-1920, 0, 2880, 1.5, width, height, EDGE_ATTACHED_TOP_MARGIN);
-            assert_eq!(x * 2 + physical_width, -1920 * 2 + 2880);
-            assert_eq!(y, -18);
-            assert_eq!(physical_width, (width * 1.5) as i32);
-            assert_eq!(physical_height, (height * 1.5) as i32);
+    fn layout() -> ShellLayout {
+        ShellLayout {
+            width: 400.0,
+            height: 332.0,
+            edge: NotchEdge::Top,
+            regions: vec![
+                rectangle(22.0, 0.0, 306.0, 90.0),
+                rectangle(340.0, 10.0, 34.0, 34.0),
+                rectangle(0.0, 102.0, 400.0, 230.0),
+                rectangle(120.0, 80.0, 54.0, 30.0),
+            ],
+            transition_id: 7,
         }
     }
 
     #[test]
-    fn edge_attached_host_uses_frontend_top_margin_at_supported_scales() {
-        let monitor_y = 360;
+    fn four_edges_use_the_work_area_at_all_supported_scales() {
+        let area = WorkArea {
+            left: -1880,
+            top: 40,
+            right: 0,
+            bottom: 1400,
+        };
         for scale in [1.0, 1.25, 1.5, 2.0] {
-            let (_, y, _, physical_height) = physical_window_frame(
-                -1920,
-                monitor_y,
-                2880,
-                scale,
-                400.0,
-                188.0,
-                EDGE_ATTACHED_TOP_MARGIN,
-            );
-            assert_eq!(
-                y,
-                monitor_y + (EDGE_ATTACHED_TOP_MARGIN * scale).round() as i32
-            );
-            assert_eq!(physical_height, (188.0 * scale).round() as i32);
-        }
-    }
-
-    #[test]
-    fn island_region_bands_are_symmetric_at_supported_scales() {
-        let cases = [
-            (96.0, 44.0, 12.0, 1.0),
-            (96.0, 44.0, 12.0, 1.25),
-            (96.0, 44.0, 12.0, 1.5),
-            (96.0, 44.0, 12.0, 2.0),
-            (256.0, 68.0, 12.0, 1.0),
-            (256.0, 68.0, 12.0, 1.25),
-            (256.0, 68.0, 12.0, 1.5),
-            (256.0, 68.0, 12.0, 2.0),
-            (400.0, 188.0, 12.0, 1.0),
-            (400.0, 188.0, 12.0, 1.25),
-            (400.0, 188.0, 12.0, 1.5),
-            (400.0, 188.0, 12.0, 2.0),
-        ];
-
-        for (width, height, radius, scale) in cases {
-            let region = window_region_bands(width, height, radius, scale);
-            assert_eq!(region.bands.first().map(|band| band.top), Some(0));
-            assert_eq!(
-                region.bands.last().map(|band| band.bottom),
-                Some(region.physical_height)
-            );
-            for band in &region.bands {
-                assert_eq!(band.left + band.right, region.physical_width);
-                assert!(band.top < band.bottom);
-            }
-            for y in 0..region.physical_height {
-                assert_eq!(
-                    row_inset(&region, y),
-                    row_inset(&region, region.physical_height - 1 - y)
-                );
+            for edge in [
+                NotchEdge::Top,
+                NotchEdge::Bottom,
+                NotchEdge::Left,
+                NotchEdge::Right,
+            ] {
+                let (x, y, width, height) =
+                    physical_window_frame(area, scale, 400.0, 332.0, edge).unwrap();
+                assert!(x >= area.left && y >= area.top);
+                assert!(x + width <= area.right && y + height <= area.bottom);
+                match edge {
+                    NotchEdge::Top => assert_eq!(y, area.top),
+                    NotchEdge::Bottom => assert_eq!(y + height, area.bottom),
+                    NotchEdge::Left => assert_eq!(x, area.left),
+                    NotchEdge::Right => assert_eq!(x + width, area.right),
+                }
+                if matches!(edge, NotchEdge::Top | NotchEdge::Bottom) {
+                    assert!(
+                        (i64::from(x) * 2 + i64::from(width)
+                            - i64::from(area.left)
+                            - i64::from(area.right))
+                        .abs()
+                            <= 1
+                    );
+                } else {
+                    assert!(
+                        (i64::from(y) * 2 + i64::from(height)
+                            - i64::from(area.top)
+                            - i64::from(area.bottom))
+                        .abs()
+                            <= 1
+                    );
+                }
             }
         }
     }
 
     #[test]
-    fn monitor_crop_starts_on_a_full_width_host_row_at_supported_scales() {
-        for (width, host_height) in [(96.0, 44.0), (256.0, 68.0), (400.0, 188.0)] {
-            for scale in [1.0, 1.25, 1.5, 2.0] {
-                let region = window_region_bands(width, host_height, 12.0, scale);
-                let first_visible_row = (-EDGE_ATTACHED_TOP_MARGIN * scale).round() as i32;
-                let last_x = region.physical_width - 1;
-
-                // The host still owns its four rounded corners. Rows hidden
-                // above the monitor retain the normal top-corner clip.
-                assert!(!contains(&region, 0, 0));
-                assert!(!contains(&region, last_x, 0));
-
-                // The first row Windows can show is below the 12 DIP top
-                // radius, so it is a full-width material edge rather than a
-                // visibly clipped pair of corners.
-                assert!(first_visible_row < region.physical_height);
-                assert_eq!(row_inset(&region, first_visible_row), 0);
-                assert!(contains(&region, 0, first_visible_row));
-                assert!(contains(&region, last_x, first_visible_row));
-            }
-        }
+    fn taskbar_move_changes_display_signature_without_resolution_change() {
+        let bounds = WorkArea {
+            left: 0,
+            top: 0,
+            right: 1920,
+            bottom: 1080,
+        };
+        let bottom = WindowPlacement {
+            bounds,
+            work_area: WorkArea {
+                bottom: 1040,
+                ..bounds
+            },
+            scale: 1.0,
+            #[cfg(target_os = "windows")]
+            hwnd: 0,
+        };
+        let top = WindowPlacement {
+            work_area: WorkArea { top: 40, ..bounds },
+            ..bottom
+        };
+        assert!(bottom.signature() != top.signature());
+        assert!(
+            bottom.signature()
+                != WindowPlacement {
+                    scale: 1.25,
+                    ..bottom
+                }
+                .signature()
+        );
     }
 
     #[test]
-    fn island_regions_exclude_all_transparent_corners_at_150_percent() {
-        for (width, height, radius) in [
-            (96.0, 44.0, 12.0),
-            (256.0, 68.0, 12.0),
-            (400.0, 188.0, 12.0),
+    fn polygon_coordinates_scale_with_actual_animation_host_size() {
+        let polygon = rectangle(100.0, 80.0, 200.0, 120.0);
+        assert_eq!(
+            physical_region_points(&polygon, 200, 166, 400.0, 332.0),
+            vec![(50, 40), (150, 40), (150, 100), (50, 100)]
+        );
+        let full = rectangle(0.0, 0.0, 400.0, 332.0);
+        assert_eq!(
+            physical_region_points(&full, 501, 415, 400.0, 332.0),
+            vec![(0, 0), (501, 0), (501, 415), (0, 415)]
+        );
+    }
+
+    #[test]
+    fn valid_disjoint_shapes_and_explicit_corridors_are_accepted() {
+        assert!(validate_shell_layout(&layout()).is_ok());
+        let mut polygon = rectangle(0.0, 0.0, 80.0, 10.0);
+        // Shared rounded-rectangle sampling includes repeated points at radius 0.
+        polygon.points.insert(0, polygon.points[0]);
+        assert!(validate_shell_layout(&ShellLayout {
+            width: 80.0,
+            height: 10.0,
+            regions: vec![polygon],
+            ..layout()
+        })
+        .is_ok());
+    }
+
+    #[test]
+    fn malformed_geometry_is_rejected_before_native_mutation() {
+        for dimension in [f64::NAN, f64::INFINITY, -1.0, 0.0, 4097.0] {
+            assert!(validate_shell_layout(&ShellLayout {
+                width: dimension,
+                ..layout()
+            })
+            .is_err());
+            assert!(validate_shell_layout(&ShellLayout {
+                height: dimension,
+                ..layout()
+            })
+            .is_err());
+        }
+        for regions in [
+            vec![],
+            vec![rectangle(0.0, 0.0, 1.0, 1.0); MAX_REGIONS + 1],
+            vec![ShellRegion {
+                points: vec![RegionPoint { x: 0.0, y: 0.0 }; MAX_REGION_POINTS + 1],
+            }],
+            vec![rectangle(-1.0, 0.0, 1.0, 1.0)],
+            vec![rectangle(400.0, 0.0, 1.0, 1.0)],
+            vec![rectangle(0.0, 332.0, 1.0, 1.0)],
+            vec![rectangle(0.0, 0.0, 0.0, 10.0)],
+            vec![ShellRegion {
+                points: vec![
+                    RegionPoint {
+                        x: f64::NAN,
+                        y: 0.0
+                    };
+                    3
+                ],
+            }],
+            vec![ShellRegion {
+                points: vec![RegionPoint { x: 0.0, y: 0.0 }; 2],
+            }],
         ] {
-            let region = window_region_bands(width, height, radius, 1.5);
-            let middle_x = region.physical_width / 2;
-            let last_x = region.physical_width - 1;
-            let last_y = region.physical_height - 1;
-            assert!(!contains(&region, 0, 0));
-            assert!(!contains(&region, last_x, 0));
-            assert!(!contains(&region, 0, last_y));
-            assert!(!contains(&region, last_x, last_y));
-            assert!(contains(&region, middle_x, 0));
-            assert!(contains(&region, middle_x, last_y));
+            assert!(validate_shell_layout(&ShellLayout {
+                regions,
+                ..layout()
+            })
+            .is_err());
         }
+    }
+
+    #[test]
+    fn floating_point_contour_noise_is_clamped_only_at_host_boundary() {
+        let polygon = rectangle(-0.000_000_01, 0.0, 400.000_000_02, 332.0);
+        let target = ShellLayout {
+            regions: vec![polygon.clone()],
+            ..layout()
+        };
+        assert!(validate_shell_layout(&target).is_ok());
+        assert_eq!(
+            physical_region_points(&polygon, 400, 332, 400.0, 332.0),
+            vec![(0, 0), (400, 0), (400, 332), (0, 332)]
+        );
+    }
+
+    #[test]
+    fn spring_animation_finishes_exactly_and_has_bounded_overshoot() {
+        for (start, target, steps) in [
+            ((80.0, 10.0), (400.0, 332.0), 26),
+            ((502.0, 356.0), (10.0, 80.0), 16),
+        ] {
+            assert_eq!(
+                shell_frame_geometry(0, steps, start.0, start.1, target.0, target.1),
+                start
+            );
+            assert_eq!(
+                shell_frame_geometry(steps, steps, start.0, start.1, target.0, target.1),
+                target
+            );
+            for step in 0..=steps {
+                let (width, height) =
+                    shell_frame_geometry(step, steps, start.0, start.1, target.0, target.1);
+                assert!(width >= 1.0 && height >= 1.0);
+                assert!(width <= start.0.max(target.0) * 1.03);
+                assert!(height <= start.1.max(target.1) * 1.03);
+            }
+        }
+    }
+
+    #[test]
+    fn runtime_retains_final_target_and_new_epochs_cancel_old_frames() {
+        let state = RuntimeState::default();
+        let first = next_transition_epoch(&state);
+        set_shell_layout(&state, layout());
+        assert!(is_current_transition(&state, first));
+        let second = next_transition_epoch(&state);
+        assert!(!is_current_transition(&state, first));
+        assert!(is_current_transition(&state, second));
+        let saved = shell_layout(&state).unwrap();
+        assert_eq!(
+            (saved.width, saved.height, saved.edge, saved.transition_id),
+            (400.0, 332.0, NotchEdge::Top, 7)
+        );
+        assert_eq!(saved.regions.len(), 4);
     }
 }
