@@ -2,7 +2,7 @@
 
 ## Codenotch design reference
 
-Atoll's edge notch, status ring presentation and hover interaction are adapted from the Codenotch design reference at https://github.com/tsaiggo/codenotch (reviewed 2026-09-08). The Windows host, shared polygon geometry and Atoll module integration are implemented for this project. The upstream notice is retained here; it does not change the license status of unrelated Atoll code.
+Atoll's edge notch, status ring presentation and hover interaction are adapted from the Codenotch design reference at https://github.com/tsaiggo/codenotch (reviewed 2026-09-08). The user-approved Floating Island application icon takes painterly style inspiration from Codenotch (2026-09-10). Its complete composition was generated using an earlier generated Atoll concept as input and presents a detached horizontal capsule with a status light and three bars. The SVG export boundary and monochrome variants are authored for Atoll. The Windows host, shared polygon geometry and Atoll module integration are implemented for this project. The upstream notice is retained here; it does not change the license status of unrelated Atoll code.
 
 MIT License
 

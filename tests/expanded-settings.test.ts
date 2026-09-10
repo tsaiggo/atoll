@@ -13,6 +13,7 @@ const moduleHooks = registerHooks({
   },
 });
 const { renderExpandedShell } = await import("../src/ui/expanded.ts");
+const { renderNotch } = await import("../src/ui/notch.ts");
 const { DEFAULT_SETTINGS } = await import("../src/config.ts");
 moduleHooks.deregister();
 
@@ -23,7 +24,6 @@ function viewModel(expandedPanel: ExpandedPanel): AppViewModel {
     expandedPanel,
     media: null,
     mediaConnection: { status: "no_session", sessionCount: 0, sources: [], manualSource: null },
-    volume: { level: 0.375, muted: false },
     energy: {
       available: false,
       todayMwh: 0,
@@ -49,7 +49,6 @@ function viewModel(expandedPanel: ExpandedPanel): AppViewModel {
     pendingSourceSelection: false,
     pendingCodexUsageAction: null,
     mediaCommandFeedback: null,
-    showInlineVolume: false,
     animateContent: false,
     motionDisabled: false,
     now: 1_754_587_200_000,
@@ -78,24 +77,50 @@ test("reflects persistent rail visibility and keeps Codex opt-in out of generic 
   assert.doesNotMatch(html, /data-action="enable-codex-usage"/);
 });
 
-test("renders volume from the live model with the system slider and mute command", () => {
-  const html = renderExpandedShell(viewModel("volume"));
-  assert.match(html, /expanded--volume/);
-  assert.match(html, /<output data-volume-value>38<\/output>/);
-  assert.match(html, /value="38" data-control="system-volume"/);
-  assert.match(html, /aria-valuetext="38 percent"/);
-  assert.match(html, /data-action="toggle-volume-mute" aria-label="Mute system volume" aria-pressed="false"/);
-  assert.doesNotMatch(html, /No active media/);
+test("energy totals include only the 30 calendar days and preserve zero, gaps and partial records", () => {
+  const vm = viewModel("energy");
+  vm.energy = { available: true, todayMwh: 20_000, dayKey: "2026-03-01", trackingSinceMs: 1,
+    partial: true, source: "battery_discharge", history: [
+      { dayKey: "2026-02-28", totalMwh: 0, partial: false },
+      { dayKey: "2026-02-01", totalMwh: 40_000, partial: true },
+      { dayKey: "2026-01-31", totalMwh: 10_000, partial: false },
+      { dayKey: "2026-01-30", totalMwh: 999_000, partial: false },
+    ] };
+  const html = renderExpandedShell(vm);
+  assert.equal((html.match(/class="energy-history__day /g) ?? []).length, 30);
+  assert.match(html, /Recorded · 30 days<\/dt><dd>70.00 Wh/);
+  assert.match(html, /Peak daily record<\/dt><dd>40.00 Wh/);
+  assert.match(html, /4\/30 · 2 partial/);
+  assert.equal((html.match(/type="button" disabled title=/g) ?? []).length, 26);
+  assert.match(html, /2\/28: 0.00 Wh/);
+  assert.match(html, /--energy-bar:0%/);
+  assert.doesNotMatch(html, /999.00/);
 });
 
-test("keeps the real saved volume visible when muted and translates its controls", () => {
-  const vm = viewModel("volume");
-  vm.settings.language = "zh-CN";
-  vm.volume.level = 0.83;
-  vm.volume.muted = true;
+test("unavailable current reading retains historical totals and selected partial-day details", () => {
+  const vm = viewModel("energy");
+  vm.energy = { available: false, todayMwh: 0, dayKey: "2026-09-10", trackingSinceMs: 0,
+    partial: true, source: "battery_discharge", history: [{ dayKey: "2026-09-09", totalMwh: 51_000, partial: true }] };
+  vm.selectedEnergyDayKey = "2026-09-09";
   const html = renderExpandedShell(vm);
-  assert.match(html, /<output data-volume-value>83<\/output>/);
-  assert.match(html, /aria-valuetext="已静音，音量 83%"/);
-  assert.match(html, /data-action="toggle-volume-mute" aria-label="恢复系统音量" aria-pressed="true"/);
-  assert.match(html, /已静音/);
+  assert.match(html, /Today so far<\/dt><dd>—/);
+  assert.match(html, /Recorded · 30 days<\/dt><dd>51.00 Wh/);
+  assert.match(html, /1\/30 · 1 partial/);
+  assert.match(html, /Partial record/);
+});
+
+test("no measurements produce the honest empty state rather than zero-valued statistics", () => {
+  const vm = viewModel("energy");
+  vm.energy = { available: false, todayMwh: 0, dayKey: "2026-09-10", trackingSinceMs: 0,
+    partial: true, source: "battery_discharge", history: [] };
+  const html = renderExpandedShell(vm);
+  assert.match(html, /energy-card--empty/);
+  assert.doesNotMatch(html, /class="energy-stats"/);
+});
+
+test("rail exposes only media, energy and Codex after volume removal", () => {
+  const html = renderNotch(viewModel("energy"));
+  const modules = [...html.matchAll(/data-notch-panel="(media|energy|codex|volume)"/g)].map(match => match[1]);
+  assert.deepEqual(modules, ["media", "energy", "codex"]);
+  assert.doesNotMatch(html, /system-volume|toggle-volume-mute/);
 });

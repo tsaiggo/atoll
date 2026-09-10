@@ -160,10 +160,18 @@ test("keeps completed history when Windows temporarily cannot report today's cap
 });
 
 test("formats battery discharge with a meaningful adaptive unit", () => {
-  assert.deepEqual(formatEnergyMeasurement(420_000, "en"), { value: "0.42", unit: "kWh" });
+  assert.deepEqual(formatEnergyMeasurement(420_000, "en"), { value: "420.00", unit: "Wh" });
   assert.deepEqual(formatEnergyMeasurement(57, "zh-CN"), { value: "0.06", unit: "Wh" });
   assert.deepEqual(formatEnergyMeasurement(1, "en"), { value: "1", unit: "mWh" });
   assert.deepEqual(formatEnergyMeasurement(0, "zh-CN"), { value: "0.00", unit: "Wh" });
   assert.deepEqual(formatEnergyMeasurement(9_999, "en"), { value: "10.00", unit: "Wh" });
-  assert.deepEqual(formatEnergyMeasurement(10_000, "zh-CN"), { value: "0.01", unit: "度" });
+  assert.deepEqual(formatEnergyMeasurement(10_000, "zh-CN"), { value: "10.00", unit: "Wh" });
+  assert.deepEqual(formatEnergyMeasurement(1_000_000, "zh-CN"), { value: "1.00", unit: "度" });
+});
+
+test("normalization retains thirty historical days instead of truncating at seven", () => {
+  const history = Array.from({length: 30}, (_, i) => ({day_key: `2026-08-${String(i+1).padStart(2,"0")}`, total_mwh: i * 1000, partial: i === 2}));
+  const energy = normalizeEnergy({ available: true, day_key: "2026-08-31", today_mwh: 100, history });
+  assert.equal(energy.history.length, 30);
+  assert.equal(energy.history.at(-1)?.dayKey, "2026-08-01");
 });

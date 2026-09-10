@@ -18,7 +18,7 @@ Success means a reliable resident utility: quick launch, quiet idle behavior, no
 
 ## Positioning
 
-Atoll is a Windows edge notch. The user-selected Codenotch reference supplies its silhouette, ring presentation and hover interaction. Atoll retains its own brand, Windows host and integrated media, volume, battery-discharge and optional Codex capabilities.
+Atoll is a Windows edge notch. The user-selected Codenotch reference supplies its silhouette, ring presentation and hover interaction. Atoll retains its own brand, Windows host and integrated media, battery-discharge and optional Codex capabilities.
 
 The Reef is its minimal dormant state. It unfolds into a status rail and a focused detail bubble, with pinning when a reading or management task should remain available.
 
@@ -33,13 +33,13 @@ The Reef is its minimal dormant state. It unfolds into a status rail and a focus
 
 ## Capabilities and Constraints
 
-- Four shell states: Hidden, Reef, Compact and Expanded, with four directly reachable status modules.
+- Four shell states: Hidden, Reef, Compact and Expanded, with three directly reachable status modules.
 - Persistent top/bottom/left/right placement, automatic or always-visible behavior, Chinese/English language and fullscreen hiding.
 - Blank-rail pinning, ring-hover inspection and pinned settings/management work.
 - Single instance; a second launch summons the existing instance. No ordinary taskbar entry.
 - Atoll Connect enumerates Windows media sessions, selects a relevant source and exposes only the metadata, timeline, artwork and GSMTC controls that players publish.
-- System volume, mute and event-driven feedback. Unsupported media controls or progress are not fabricated.
-- Battery-discharge energy recorded locally with adaptive units, seven-day history, missing-day gaps and explicit partial records. This is neither whole-PC wall-power measurement nor a battery-charge percentage.
+- Unsupported media controls or progress are not fabricated.
+- Battery-discharge energy recorded locally with a 30-calendar-day view including today, four summary rows (today, recorded period total, peak recorded day and coverage), selectable daily bars, missing-day gaps and explicit partial records. Values use Wh below 1000 Wh and kWh/度 at or above it, with mWh retained for positive readings below 10 mWh. This is neither whole-PC wall-power measurement nor a battery-charge percentage.
 - Codex usage is optional and disabled by default. A direct Enable action starts the local App Server integration. The surface shows aggregated actual usage windows and reset times, supports refresh and turn-off, and fails softly when local authentication or CLI support is unavailable.
 - No Codex prompts, files, account identifiers, API keys, raw protocol payloads or reset-credit actions are exposed by the UI.
 - Core behavior is local and does not require an Atoll account, cloud sync, ads, telemetry, analytics or unrelated content capture. Optional integrations use their existing local service/account boundary.
@@ -50,15 +50,15 @@ The Reef is its minimal dormant state. It unfolds into a status rail and a focus
 
 - Product name: Atoll. English line: “Your status, surfaced.”
 - The established Chinese line is “重要状态，浮现于顶端。” It is retained brand copy, not a top-only placement constraint.
-- The Inset Cove v2 icon is an asymmetric reef mass with a left-offset lagoon and upper-right cove. The authored application and tray masters remain the brand authority.
+- Floating Island is the user-approved application icon: a detached horizontal black capsule on a painterly cyan, cobalt, lilac, coral and peach canvas, with a cyan status light on the left and three white bars on the right. The approved artwork and authored monochrome capsule variants are the brand authority.
 - Voice is concise, calm and useful.
-- The live shell follows the user-approved Codenotch black-and-white material, reference geometry and measured Codex color bands. This replaces the former Acrylic/tide-line shell; it does not replace the packaged graphite/mint artwork or turn Atoll into a macOS product.
+- The live shell follows the user-approved Codenotch black-and-white material, reference geometry and measured Codex color bands. The multicolored packaged icon is an identity asset; its pigment palette does not change the shell's measured status colors or Windows operating platform.
 
 ## Evidence on Hand
 
 - Original product requirements remain at `C:\Users\ttsai\.codex\attachments\19d829d9-eed1-4fcd-b5c5-557e8ef3cecd\pasted-text.txt`.
 - The user supplied `https://github.com/tsaiggo/codenotch` as the reproduction reference. Its MIT notice is retained in `THIRD_PARTY_NOTICES.md`.
-- Authored brand masters exist at `assets/atoll-icon.svg` and `assets/atoll-tray.svg`.
+- Brand sources are the complete generated composition at `assets/atoll-icon-paint.png`, its exact prompt at `assets/atoll-icon-paint.prompt.txt`, the authored outer clip at `assets/atoll-icon.svg`, and the monochrome `assets/atoll-tray.svg`. The transparent distribution master is `assets/atoll-icon.png`; reproduction and provenance are recorded in `docs/icon-design.md`.
 - Demo readings are synthetic and labeled in development previews. Customer claims, benchmarks and unrelated media assets must not be invented.
 
 ## Product Principles

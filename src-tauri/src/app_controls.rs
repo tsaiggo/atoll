@@ -38,8 +38,6 @@ impl MenuLanguage {
                 demo_idle: "Idle",
                 #[cfg(debug_assertions)]
                 demo_media: "Media playing",
-                #[cfg(debug_assertions)]
-                demo_volume: "Volume",
             },
             Self::SimplifiedChinese => MenuLabels {
                 toggle: "显示或隐藏 Atoll",
@@ -53,8 +51,6 @@ impl MenuLanguage {
                 demo_idle: "空闲",
                 #[cfg(debug_assertions)]
                 demo_media: "媒体播放",
-                #[cfg(debug_assertions)]
-                demo_volume: "音量",
             },
         }
     }
@@ -73,8 +69,6 @@ struct MenuLabels {
     demo_idle: &'static str,
     #[cfg(debug_assertions)]
     demo_media: &'static str,
-    #[cfg(debug_assertions)]
-    demo_volume: &'static str,
 }
 
 #[cfg(debug_assertions)]
@@ -82,7 +76,6 @@ struct DebugMenuItems<R: Runtime> {
     submenu: Submenu<R>,
     idle: MenuItem<R>,
     media: MenuItem<R>,
-    volume: MenuItem<R>,
 }
 
 struct LocalizedMenu<R: Runtime> {
@@ -107,7 +100,6 @@ impl<R: Runtime> LocalizedMenu<R> {
             self.debug.submenu.set_text(labels.demo)?;
             self.debug.idle.set_text(labels.demo_idle)?;
             self.debug.media.set_text(labels.demo_media)?;
-            self.debug.volume.set_text(labels.demo_volume)?;
         }
 
         Ok(())
@@ -164,14 +156,12 @@ fn create_menu<R: Runtime>(
     let debug = {
         let idle = MenuItem::with_id(app, "demo:idle", labels.demo_idle, true, None::<&str>)?;
         let media = MenuItem::with_id(app, "demo:media", labels.demo_media, true, None::<&str>)?;
-        let volume = MenuItem::with_id(app, "demo:volume", labels.demo_volume, true, None::<&str>)?;
-        let submenu = Submenu::with_items(app, labels.demo, true, &[&idle, &media, &volume])?;
+        let submenu = Submenu::with_items(app, labels.demo, true, &[&idle, &media])?;
 
         DebugMenuItems {
             submenu,
             idle,
             media,
-            volume,
         }
     };
 

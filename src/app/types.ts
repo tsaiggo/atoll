@@ -6,18 +6,16 @@ import type {
   MediaConnection,
   MediaStatus,
   ShellState,
-  VolumeStatus,
 } from "../domain";
 import type { MediaCommand, MediaCommandFeedback } from "../features/media/commands";
 
-export type ExpandedPanel = "home" | "media" | "energy" | "codex" | "settings" | "sources" | "volume";
+export type ExpandedPanel = "home" | "media" | "energy" | "codex" | "settings" | "sources";
 
 export type PreviewMode =
   | "reef"
   | "compact-media"
   | "expanded-home"
   | "expanded-media"
-  | "expanded-volume"
   | "expanded-energy"
   | "expanded-codex"
   | "expanded-sources"
@@ -30,7 +28,6 @@ export interface AppViewModel {
   readonly expandedPanel: ExpandedPanel;
   readonly media: MediaStatus | null;
   readonly mediaConnection: MediaConnection;
-  readonly volume: VolumeStatus;
   readonly energy: EnergyStatus;
   readonly codexUsage: CodexUsageStatus;
   readonly selectedEnergyDayKey: string | null;
@@ -40,7 +37,6 @@ export interface AppViewModel {
   readonly pendingSourceSelection: boolean;
   readonly pendingCodexUsageAction: "enable" | "disable" | "refresh" | null;
   readonly mediaCommandFeedback: MediaCommandFeedback | null;
-  readonly showInlineVolume: boolean;
   readonly animateContent: boolean;
   readonly motionDisabled: boolean;
   readonly now: number;

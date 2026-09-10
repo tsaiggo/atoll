@@ -7,7 +7,6 @@ import type {
   NativeCodexUsagePayload,
   NativeEnergyPayload,
   NativeMediaUpdatePayload,
-  NativeVolumePayload,
   ShellState,
 } from "../domain";
 
@@ -39,7 +38,6 @@ export interface NativeEventHandlers {
   onCodexUsage(payload: NativeCodexUsagePayload): void;
   onEnergy(payload: NativeEnergyPayload): void;
   onMediaUpdate(payload: NativeMediaUpdatePayload): void;
-  onVolume(payload: NativeVolumePayload): void;
   onFullscreenChanged(payload: { fullscreen: boolean }): void;
   onShellSettled(payload: NativeShellSettledPayload): void;
   onPointerPresence(inside: boolean): void;
@@ -115,14 +113,6 @@ export function selectNativeMediaSource(
   return invoke<boolean>("media_select_source", { providerId, sourceId });
 }
 
-export function setNativeSystemVolume(level: number): Promise<boolean> {
-  return invoke<boolean>("set_system_volume", { level });
-}
-
-export function setNativeSystemMute(muted: boolean): Promise<boolean> {
-  return invoke<boolean>("set_system_mute", { muted });
-}
-
 export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<UnlistenFn[]> {
   return Promise.all([
     listen<boolean>("atoll-pointer-presence", ({ payload }) => handlers.onPointerPresence(payload)),
@@ -134,7 +124,6 @@ export function subscribeNativeEvents(handlers: NativeEventHandlers): Promise<Un
     listen<NativeMediaUpdatePayload>("media-update", ({ payload }) =>
       handlers.onMediaUpdate(payload),
     ),
-    listen<NativeVolumePayload>("system-volume", ({ payload }) => handlers.onVolume(payload)),
     listen<{ fullscreen: boolean }>("fullscreen-changed", ({ payload }) =>
       handlers.onFullscreenChanged(payload),
     ),

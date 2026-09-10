@@ -29,7 +29,7 @@ function ring(progress: number | null, color = "#FFFFFF", media = false): string
 }
 
 interface RingOptions {
-  panel: "media" | "volume" | "energy" | "codex";
+  panel: "media" | "energy" | "codex";
   name: string;
   label: string;
   value: string;
@@ -65,7 +65,6 @@ export function renderNotch(vm: AppViewModel): string {
   const media = vm.media;
   const duration = media?.durationMs;
   const mediaProgress = media && duration && duration > 0 ? mediaPositionMs(media, vm.now) / duration : null;
-  const volume = Math.round(Math.max(0, Math.min(1, vm.volume.level)) * 100);
   const measurement = formatEnergyMeasurement(vm.energy.todayMwh, vm.settings.language);
   const codex = vm.codexUsage.status === "ready" ? selectCodexUsageWindows(vm.codexUsage.windows).primary : null;
   const codexValue = codex ? `${formatCodexUsagePercent(codex.usedPercent, vm.settings.language)}%` : "—";
@@ -76,7 +75,6 @@ export function renderNotch(vm: AppViewModel): string {
   const codexGlyph = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-12-2 14" /></svg>';
   const buttons = [
     ringButton(vm, { panel: "media", name: copy.notch.media, label: media ? `${copy.notch.media} · ${media.title} · ${media.artist}` : copy.media.noMedia, value: copy.notch.media, glyph: mediaGlyph, progress: mediaProgress, quiet: !media }),
-    ringButton(vm, { panel: "volume", name: copy.notch.volume, label: copy.volume.accessibleValue(volume, vm.volume.muted), value: vm.volume.muted ? copy.volume.muted : `${volume}%`, glyph: icon(vm.volume.muted ? "volumeMute" : "volume"), progress: vm.volume.muted ? 0 : volume / 100 }),
     ringButton(vm, { panel: "energy", name: copy.notch.energy, label: `${copy.notch.energy} · ${vm.energy.available ? `${measurement.value} ${measurement.unit}` : copy.energy.capacityUnavailable}`, value: vm.energy.available ? `${measurement.value} ${measurement.unit}` : "—", glyph: energyGlyph, progress: null, quiet: !vm.energy.available }),
     ringButton(vm, { panel: "codex", name: copy.notch.codex, label: `${copy.notch.codex} · ${codex ? codexValue : copy.codex.openUsage}`, value: codexValue, glyph: codexGlyph, progress: codex ? codex.usedPercent / 100 : null, color: codex ? notchUsageColor(codex.usedPercent) : undefined, quiet: !codex }),
   ].join("");

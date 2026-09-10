@@ -64,7 +64,7 @@ export function notchGeometry(state: Exclude<ShellState,"hidden">, edge: NotchEd
   const folded = state === "reef", expanded = state === "expanded", m=notchMetrics(vertical);
   const depth=folded?C.pillDepth:m.depth, length=folded?C.pillLength:m.length;
   const panelWidth=panelKey==="settings"?360:panelKey==="sources"||panelKey==="home"?300:C.cardWidth;
-  const panelHeight=panelKey==="settings"?320:panelKey==="volume"?120:panelKey==="media"||panelKey==="codex"?176:panelKey==="energy"?224:210;
+  const panelHeight=panelKey==="settings"?320:panelKey==="media"||panelKey==="codex"?176:panelKey==="energy"?320:210;
   // Symmetric slack keeps the rail still across all detail changes. Only the
   // actual contours intercept desktop clicks inside the transparent host.
   const slack=vertical?88:208, hostAlong=m.length+2*slack;
@@ -95,7 +95,7 @@ export function notchGeometry(state: Exclude<ShellState,"hidden">, edge: NotchEd
   regions.push({points:roundedRect(hot,C.orbHotZone/2)});
   let panel:SurfaceRect|null=null,anchor:Point|null=null;
   if(expanded){
-    const index=panelKey==="media"||panelKey==="sources"?0:panelKey==="volume"?1:panelKey==="energy"?2:3;
+    const index=panelKey==="media"||panelKey==="sources"?0:panelKey==="energy"?1:2;
     const along=slack+(panelKey==="settings"?length-C.curl:m.centers[index]);
     const panelAlong=vertical?panelHeight:panelWidth, panelAcross=vertical?panelWidth:panelHeight;
     const start=Math.min(hostAlong-panelAlong-16,Math.max(16,along-panelAlong/2));

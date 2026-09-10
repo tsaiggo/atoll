@@ -13,7 +13,6 @@ import {
   mediaEmptyCopy,
   renderCover,
   renderHomeEnergy,
-  renderInlineVolume,
   renderMediaProgress,
   settingToggle,
 } from "./primitives";
@@ -31,8 +30,6 @@ function renderExpandedPanel(vm: AppViewModel): string {
   switch (vm.expandedPanel) {
     case "media":
       return renderMediaPanel(vm);
-    case "volume":
-      return renderVolumePanel(vm);
     case "energy":
       return renderEnergyPanel(vm);
     case "codex":
@@ -57,7 +54,6 @@ function renderHomePanel(vm: AppViewModel): string {
             <span class="mark">${icon("atoll")}</span>
             <span><strong>Atoll</strong></span>
           </button>
-          ${renderInlineVolume(vm, true)}
           <button class="icon-button home-card__hide" type="button" data-action="hide" aria-label="${copy.shell.hide}">${icon("hide")}</button>
           <button class="icon-button" type="button" data-action="open-settings" aria-label="${copy.shell.openSettings}">${icon("gear")}</button>
         </header>
@@ -75,27 +71,6 @@ function renderHomePanel(vm: AppViewModel): string {
         </div>
       </section>
       ${renderHomeEnergy(vm)}
-    </div>`;
-}
-
-function renderVolumePanel(vm: AppViewModel): string {
-  const copy = copyFor(vm.settings.language);
-  const percentage = Math.round(Math.min(1, Math.max(0, vm.volume.level)) * 100);
-  const muteLabel = vm.volume.muted ? copy.volume.unmute : copy.volume.mute;
-  return `
-    <div class="volume-card">
-      <header class="expanded__header volume-card__header">
-        <button class="icon-button" type="button" data-action="open-home" aria-label="${copy.shell.backHome}">${icon("back")}</button>
-        <span class="volume-card__title"><strong>${copy.volume.title}</strong><small>${copy.volume.controls}</small></span>
-      </header>
-      <div class="volume-card__controls" role="group" aria-label="${copy.volume.controls}">
-        <div class="volume-card__readout">
-          <strong class="volume-card__value"><output data-volume-value>${percentage}</output><small>%</small></strong>
-          ${vm.volume.muted ? `<small class="volume-card__muted">${copy.volume.muted}</small>` : ""}
-        </div>
-        <button class="inline-volume__mute volume-card__mute" type="button" data-action="toggle-volume-mute" aria-label="${muteLabel}" aria-pressed="${vm.volume.muted}" title="${muteLabel}">${icon(vm.volume.muted ? "volumeMute" : "volume")}</button>
-        <input class="inline-volume__range volume-card__range" type="range" min="0" max="100" step="1" value="${percentage}" data-control="system-volume" aria-label="${copy.volume.title}" aria-valuetext="${copy.volume.accessibleValue(percentage, vm.volume.muted)}" style="--volume-level:${percentage}%">
-      </div>
     </div>`;
 }
 
@@ -127,9 +102,14 @@ function renderEnergyPanel(vm: AppViewModel): string {
   }
 
   const maximumMwh = Math.max(...recordedSlots.map((slot) => slot.totalMwh ?? 0), 1);
-  const historySubtitle = recordedSlots.some((slot) => slot.partial)
-    ? `${copy.energy.historySubtitle} · ${copy.energy.historyPartialLegend}`
-    : copy.energy.historySubtitle;
+  const totalMwh = recordedSlots.reduce((sum, slot) => sum + (slot.totalMwh ?? 0), 0);
+  const peakMwh = Math.max(...recordedSlots.map((slot) => slot.totalMwh ?? 0));
+  const partialDays = recordedSlots.filter((slot) => slot.partial).length;
+  const measured = (value: number) => {
+    const result = formatEnergyMeasurement(value, vm.settings.language);
+    return `${result.value} ${result.unit}`;
+  };
+  const metric = (label: string, value: string) => `<div class="energy-stat"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
   const selectedDate = selected.current
     ? copy.energy.historyToday
     : formatEnergyHistoryDate(selected.dayKey, vm.settings.language);
@@ -141,13 +121,20 @@ function renderEnergyPanel(vm: AppViewModel): string {
     <div class="energy-card" aria-label="${copy.energy.historyTitle}">
       <header class="expanded__header energy-card__header">
         <button class="icon-button" type="button" data-action="open-home" aria-label="${copy.shell.backHome}">${icon("back")}</button>
-        <span class="energy-card__title"><strong>${copy.energy.historyTitle}</strong><small>${escapeHtml(historySubtitle)}</small></span>
+        <span class="energy-card__title"><strong>${copy.energy.historyTitle}</strong><small>${copy.energy.historySubtitle}</small></span>
       </header>
+      <dl class="energy-stats">
+        ${metric(copy.energy.historyToday, vm.energy.available ? measured(vm.energy.todayMwh) : "—")}
+        ${metric(copy.energy.periodRecorded, measured(totalMwh))}
+        ${metric(copy.energy.peakRecorded, measured(peakMwh))}
+        ${metric(copy.energy.recordedDays, copy.energy.coverage(recordedSlots.length, partialDays))}
+      </dl>
       <div class="energy-history" role="group" aria-label="${copy.energy.historyTitle}">
         ${slots
-          .map((slot) => renderEnergyHistorySlot(slot, maximumMwh, vm.selectedEnergyDayKey, vm.settings.language))
+          .map((slot) => renderEnergyHistorySlot(slot, maximumMwh, selected.dayKey, vm.settings.language))
           .join("")}
       </div>
+      <div class="energy-history__axis" aria-hidden="true"><span>${escapeHtml(formatEnergyHistoryDate(slots[0].dayKey, vm.settings.language))}</span><span>${copy.energy.historyToday}</span></div>
       <footer class="energy-history__readout" aria-live="polite">
         <span class="energy-history__selected-copy">
           <strong>${escapeHtml(selectedDate)}</strong>
@@ -155,6 +142,7 @@ function renderEnergyPanel(vm: AppViewModel): string {
         </span>
         <span class="energy-history__selected-value"><strong>${escapeHtml(selectedMeasurement.value)}</strong><small>${escapeHtml(selectedMeasurement.unit)}</small></span>
       </footer>
+      <p class="energy-history__legend">${copy.energy.historyPartialLegend}<br>${copy.energy.batteryDischargeOnly}</p>
     </div>`;
 }
 
@@ -307,9 +295,9 @@ function codexFailureCopy(
 function energyHistorySlots(vm: AppViewModel): EnergyHistorySlot[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(vm.energy.dayKey)) return [];
   const historyByDay = new Map(vm.energy.history.map((entry) => [entry.dayKey, entry]));
-  return Array.from({ length: 7 }, (_, index) => {
-    const dayKey = offsetEnergyDay(vm.energy.dayKey, index - 6);
-    const current = index === 6;
+  return Array.from({ length: 30 }, (_, index) => {
+    const dayKey = offsetEnergyDay(vm.energy.dayKey, index - 29);
+    const current = index === 29;
     if (current) {
       return {
         dayKey,
@@ -338,20 +326,18 @@ function renderEnergyHistorySlot(
   const date = formatEnergyHistoryDate(slot.dayKey, language);
   if (slot.totalMwh === undefined) {
     return `
-      <button class="energy-history__day energy-history__day--empty" type="button" disabled aria-label="${escapeHtml(copy.historyMissingEntry(date))}">
+      <button class="energy-history__day energy-history__day--empty" type="button" disabled title="${escapeHtml(copy.historyMissingEntry(date))}" aria-label="${escapeHtml(copy.historyMissingEntry(date))}">
         <span class="energy-history__bar-area" aria-hidden="true"></span>
-        <small>${escapeHtml(date)}</small>
         <span class="sr-only">${escapeHtml(copy.historyMissingEntry(date))}</span>
       </button>`;
   }
 
   const measurement = formatEnergyMeasurement(slot.totalMwh, language);
-  const percentage = Math.max(3, Math.round((slot.totalMwh / maximumMwh) * 100));
+  const percentage = (slot.totalMwh / maximumMwh) * 100;
   const label = copy.historyEntry(date, measurement.value, measurement.unit, slot.partial);
   return `
-    <button class="energy-history__day ${selectedDayKey === slot.dayKey ? "is-selected" : ""}" type="button" data-action="select-energy-day" data-value="${slot.dayKey}" aria-label="${escapeHtml(label)}" aria-pressed="${selectedDayKey === slot.dayKey}">
+    <button class="energy-history__day ${selectedDayKey === slot.dayKey ? "is-selected" : ""}" type="button" data-action="select-energy-day" data-value="${slot.dayKey}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" aria-pressed="${selectedDayKey === slot.dayKey}">
       <span class="energy-history__bar-area" aria-hidden="true"><span class="energy-history__bar ${slot.partial ? "energy-history__bar--partial" : ""}" style="--energy-bar:${percentage}%"></span></span>
-      <small>${escapeHtml(date)}</small>
     </button>`;
 }
 
@@ -384,13 +370,10 @@ function renderMediaPanel(vm: AppViewModel): string {
   const sourceCopy = vm.mediaCommandFeedback?.message ?? sourceDetail;
   const canChooseSource =
     !vm.mediaCommandFeedback &&
-    !vm.showInlineVolume &&
     !vm.pendingMediaSeek &&
     vm.mediaConnection.sources.length > 1;
   const footerContent =
-    !vm.mediaCommandFeedback && vm.showInlineVolume
-      ? renderInlineVolume(vm)
-      : canChooseSource
+    canChooseSource
         ? renderSourceTrigger(vm, sourceCopy)
       : `<span class="source-label ${vm.mediaCommandFeedback?.failed ? "source-label--feedback" : ""}" aria-live="${vm.mediaCommandFeedback ? "polite" : "off"}"><span class="source-label__dot" aria-hidden="true"></span><span>${escapeHtml(sourceCopy)}</span></span>`;
   return `

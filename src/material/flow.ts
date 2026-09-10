@@ -1,6 +1,6 @@
 import type { ShellState } from "../domain";
 
-export type MaterialPulse = "expand" | "media" | "volume" | "control";
+export type MaterialPulse = "expand" | "media" | "control";
 
 export interface MaterialFlowState {
   shell: ShellState;
@@ -27,7 +27,6 @@ const DARK_FLOW_COLOR: readonly [number, number, number] = [0.94, 0.94, 0.94];
 const PULSE_STRENGTH: Record<MaterialPulse, number> = {
   expand: 1,
   media: 0.86,
-  volume: 0.64,
   control: 0.48,
 };
 
