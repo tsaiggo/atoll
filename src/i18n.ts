@@ -3,7 +3,6 @@ export type UiLanguage = "en" | "zh-CN";
 export interface AppCopy {
   readonly notch: {
     readonly media: string;
-    readonly volume: string;
     readonly energy: string;
     readonly codex: string;
     readonly openSettings: string;
@@ -86,16 +85,11 @@ export interface AppCopy {
     readonly backToControls: string;
     readonly sourceChangeUnavailable: string;
   };
-  readonly volume: {
-    readonly title: string;
-    readonly muted: string;
-    readonly controls: string;
-    readonly mute: string;
-    readonly unmute: string;
-    readonly percent: (value: number) => string;
-    readonly accessibleValue: (value: number, muted: boolean) => string;
-  };
   readonly energy: {
+    readonly periodRecorded: string;
+    readonly peakRecorded: string;
+    readonly recordedDays: string;
+    readonly coverage: (days: number, partial: number) => string;
     readonly todayBatteryDischarge: (value: string, unit: string) => string;
     readonly todayBatteryDischargeTitle: string;
     readonly capacityUnavailable: string;
@@ -156,7 +150,6 @@ export interface AppCopy {
 const EN: AppCopy = {
   notch: {
     media: "Media",
-    volume: "Volume",
     energy: "Battery discharge",
     codex: "Codex",
     openSettings: "Open notch settings",
@@ -231,31 +224,25 @@ const EN: AppCopy = {
     backToControls: "Back to media controls",
     sourceChangeUnavailable: "Couldn’t change playback source",
   },
-  volume: {
-    title: "Volume",
-    muted: "Muted",
-    controls: "System volume controls",
-    mute: "Mute system volume",
-    unmute: "Unmute system volume",
-    percent: (value) => `${value} percent`,
-    accessibleValue: (value, muted) =>
-      muted ? `Muted, ${value} percent` : `${value} percent`,
-  },
   energy: {
+    periodRecorded: "Recorded · 30 days",
+    peakRecorded: "Peak daily record",
+    recordedDays: "Days recorded",
+    coverage: (days, partial) => `${days}/30${partial ? ` · ${partial} partial` : ""}`,
     todayBatteryDischarge: (value, unit) => `Today's battery discharge: ${value} ${unit}`,
     todayBatteryDischargeTitle: "Today's battery discharge",
     capacityUnavailable: "Battery capacity unavailable",
     batteryDischargeOnly: "Battery discharge only",
     partialRecord: "Partial record",
     trackingSince: (time) => `since ${time}`,
-    openHistory: "View the last 7 days",
+    openHistory: "View the last 30 days",
     historyTitle: "Battery discharge",
-    historySubtitle: "Last 7 days",
+    historySubtitle: "Last 30 days",
     historyToday: "Today so far",
     historyNoRecord: "No record",
     historyUnavailableDetail: "Windows is not reporting battery capacity right now.",
     historyFirstDayDetail: "Completed days will appear here as Atoll records them.",
-    historyPartialLegend: "Dashed cap = partial record",
+    historyPartialLegend: "Gap: no record · Dashed cap: partial",
     historyEntry: (date, value, unit, partial) =>
       `${date}: ${value} ${unit}${partial ? ", partial record" : ""}`,
     historyMissingEntry: (date) => `${date}: no record`,
@@ -307,7 +294,6 @@ const EN: AppCopy = {
 const ZH_CN: AppCopy = {
   notch: {
     media: "媒体",
-    volume: "音量",
     energy: "电池放电",
     codex: "Codex",
     openSettings: "打开刘海设置",
@@ -381,31 +367,25 @@ const ZH_CN: AppCopy = {
     backToControls: "返回媒体控制",
     sourceChangeUnavailable: "无法切换播放来源",
   },
-  volume: {
-    title: "音量",
-    muted: "已静音",
-    controls: "系统音量控制",
-    mute: "静音系统音量",
-    unmute: "恢复系统音量",
-    percent: (value) => `${value}%`,
-    accessibleValue: (value, muted) =>
-      muted ? `已静音，音量 ${value}%` : `音量 ${value}%`,
-  },
   energy: {
+    periodRecorded: "近 30 天已记录",
+    peakRecorded: "已记录单日峰值",
+    recordedDays: "有记录天数",
+    coverage: (days, partial) => `${days}/30${partial ? ` · ${partial} 天不完整` : ""}`,
     todayBatteryDischarge: (value, unit) => `今日电池放电：${value} ${unit}`,
     todayBatteryDischargeTitle: "今日电池放电",
     capacityUnavailable: "电池容量不可用",
     batteryDischargeOnly: "仅电池放电",
     partialRecord: "部分记录",
     trackingSince: (time) => `自 ${time} 开始记录`,
-    openHistory: "查看近 7 天",
+    openHistory: "查看近 30 天",
     historyTitle: "电池放电",
-    historySubtitle: "近 7 天",
+    historySubtitle: "近 30 天",
     historyToday: "今日累计",
     historyNoRecord: "暂无记录",
     historyUnavailableDetail: "Windows 当前未提供电池容量。",
     historyFirstDayDetail: "Atoll 记录到完整日期后会显示在这里。",
-    historyPartialLegend: "虚线顶端表示部分记录",
+    historyPartialLegend: "缺口：未记录 · 虚线：部分记录",
     historyEntry: (date, value, unit, partial) =>
       `${date}：${value} ${unit}${partial ? "，部分记录" : ""}`,
     historyMissingEntry: (date) => `${date}：暂无记录`,

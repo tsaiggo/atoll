@@ -56,15 +56,6 @@ function renderCompactContent(vm: AppViewModel): string {
           <small>${escapeHtml(vm.media?.artist ?? copy.media.waitingForSession)}</small>
         </span>
         <span class="compact__status">${icon(vm.media?.playing ? "pause" : "play")}</span>`;
-    case "volume": {
-      const percentage = Math.round(vm.volume.level * 100);
-      return `
-        <span class="compact__glyph">${icon(vm.volume.muted ? "volumeMute" : "volume")}</span>
-        <span class="volume__stack">
-          <span class="volume__label">${vm.volume.muted ? copy.volume.muted : copy.volume.title} <strong>${percentage}%</strong></span>
-          <span class="meter" role="meter" aria-label="${copy.volume.title}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${copy.volume.accessibleValue(percentage, vm.volume.muted)}"><span style="transform:scaleX(${vm.volume.level})"></span></span>
-        </span>`;
-    }
     default:
       return `
         <span class="mark mark--compact">${icon("atoll")}</span>

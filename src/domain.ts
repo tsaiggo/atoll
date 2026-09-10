@@ -3,7 +3,6 @@ export type ContentKind =
   | "idle"
   | "welcome"
   | "media"
-  | "volume"
   | "settings";
 
 export interface MediaStatus {
@@ -48,11 +47,6 @@ export interface MediaSource {
 export interface MediaSourceSelection {
   providerId: string;
   sourceId: string;
-}
-
-export interface VolumeStatus {
-  level: number;
-  muted: boolean;
 }
 
 // Energy is deliberately scoped to battery discharge. Windows cannot
@@ -150,12 +144,6 @@ export interface NativeMediaUpdatePayload {
   media?: NativeMediaPayload | null;
 }
 
-export interface NativeVolumePayload {
-  level: number;
-  muted: boolean;
-  initial?: boolean;
-}
-
 export interface NativeEnergyPayload {
   available?: boolean;
   today_mwh?: number | null;
@@ -228,16 +216,15 @@ export const DEMO_MEDIA_SOURCES: readonly MediaSource[] = [
 
 export const DEMO_ENERGY: EnergyStatus = {
   available: true,
-  todayMwh: 420_000,
+  todayMwh: 42_000,
   dayKey: "2026-08-08",
   trackingSinceMs: Date.now() - 6 * 60 * 60 * 1_000,
   partial: false,
-  history: [
-    { dayKey: "2026-08-07", totalMwh: 358_000, partial: false },
-    { dayKey: "2026-08-06", totalMwh: 612_000, partial: false },
-    { dayKey: "2026-08-05", totalMwh: 184_000, partial: true },
-    { dayKey: "2026-08-04", totalMwh: 496_000, partial: false },
-  ],
+  history: Array.from({ length: 29 }, (_, index) => ({
+    dayKey: new Date(Date.UTC(2026, 6, 10 + index)).toISOString().slice(0, 10),
+    totalMwh: index === 8 ? 0 : (12 + index * 13 % 54) * 1_000,
+    partial: index === 11 || index === 24,
+  })).filter((_, index) => ![5, 17, 23].includes(index)),
   source: "battery_discharge",
 };
 
@@ -362,7 +349,7 @@ function normalizeCodexDailyUsage(
   }
   return [...days.values()]
     .sort((left, right) => right.dayKey.localeCompare(left.dayKey))
-    .slice(0, 7);
+    .slice(0, 30);
 }
 
 export interface CodexUsageWindowSelection {
@@ -509,7 +496,7 @@ function normalizeEnergyHistory(
 
   return [...byDay.values()]
     .sort((left, right) => right.dayKey.localeCompare(left.dayKey))
-    .slice(0, 7);
+    .slice(0, 30);
 }
 
 export interface EnergyMeasurement {
@@ -537,7 +524,7 @@ export function formatEnergyMeasurement(
       unit: "mWh",
     };
   }
-  if (normalizedMwh < 10_000) {
+  if (normalizedMwh < 1_000_000) {
     return { value: twoDecimal(normalizedMwh / 1_000), unit: "Wh" };
   }
   return {

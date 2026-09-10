@@ -86,19 +86,6 @@ export function renderCover(
   return `<span class="${className} cover--brand" aria-hidden="true">${icon("atoll")}</span>`;
 }
 
-export function renderInlineVolume(vm: AppViewModel, alwaysVisible = false): string {
-  if (!alwaysVisible && !vm.showInlineVolume) return "";
-  const percentage = Math.round(vm.volume.level * 100);
-  const copy = copyFor(vm.settings.language).volume;
-  const muteLabel = vm.volume.muted ? copy.unmute : copy.mute;
-  return `
-    <div class="inline-volume" role="group" aria-label="${copy.controls}">
-      <button class="inline-volume__mute" type="button" data-action="toggle-volume-mute" aria-label="${muteLabel}" aria-pressed="${vm.volume.muted}" title="${muteLabel}">${icon(vm.volume.muted ? "volumeMute" : "volume")}</button>
-      <input class="inline-volume__range" type="range" min="0" max="100" step="1" value="${percentage}" data-control="system-volume" aria-label="${copy.title}" aria-valuetext="${copy.accessibleValue(percentage, vm.volume.muted)}" style="--volume-level:${percentage}%">
-      <output class="inline-volume__value" data-volume-value>${percentage}</output>
-    </div>`;
-}
-
 export function renderHomeEnergy(vm: AppViewModel): string {
   const copy = copyFor(vm.settings.language).energy;
   const available = vm.energy.available;
@@ -150,10 +137,6 @@ export function compactAccessibleLabel(vm: AppViewModel): string {
           : copy.media.paused
         : copy.media.waiting;
       return copy.media.accessibleStatus(title, vm.media?.artist ?? null, playback, expand);
-    }
-    case "volume": {
-      const percentage = Math.round(vm.volume.level * 100);
-      return `${copy.volume.accessibleValue(percentage, vm.volume.muted)}. ${expand}`;
     }
     default:
       return `Atoll. ${expand}`;

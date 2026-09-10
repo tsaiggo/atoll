@@ -1,7 +1,7 @@
 # Atoll
 
 <div align="center">
-  <img src="assets/atoll-icon.svg" width="96" height="96" alt="Atoll logo">
+  <img src="assets/atoll-icon.png" width="96" height="96" alt="Atoll logo">
   <p><strong>Your status, surfaced.</strong><br>重要状态，浮现于顶端。</p>
   <p>
     <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-16786c">
@@ -17,7 +17,7 @@
 
 Atoll is a Windows status notch that docks at the center of any edge of the primary display’s work area. Its pure-black shell, inward-curving shoulders, colored status rings, and floating detail panels adapt the [Codenotch design](https://github.com/tsaiggo/codenotch) to Windows. It uses Segoe UI and native Windows capabilities; the shell does not use Acrylic. The default top-edge entry contracts into a small **Reef** until you hover or request controls.
 
-Its purpose is simple: surface current media, system volume, and laptop battery-discharge energy in a local status layer that never steals focus or interrupts work. An optional Codex view can also show the signed-in local Codex CLI's aggregate quota windows and reset times after the user explicitly enables it.
+Its purpose is simple: surface current media and laptop battery-discharge energy in a local status layer that never steals focus or interrupts work. An optional Codex view can also show the signed-in local Codex CLI's aggregate quota windows and reset times after the user explicitly enables it.
 
 ## Current capabilities
 
@@ -26,10 +26,9 @@ Its purpose is simple: surface current media, system volume, and laptop battery-
 | **Status notch** | Docks to the top, bottom, left, or right edge of the primary display’s work area; respects the taskbar; does not steal focus or appear in the normal taskbar. Supports high DPI, display-layout changes, and fullscreen auto-hide, enabled by default. |
 | **Now playing** | Reads cover art, track, artist, playback state, and real timeline data from compatible Windows GSMTC sessions; supports previous, play/pause, next, and seeking when the player explicitly supports it. |
 | **Media sources** | Automatically picks a suitable source when several compatible apps publish system media sessions, or lets the user pin one application source for the current run. QQ Music, Spotify, browsers, and other apps work when they publish a GSMTC session. |
-| **System volume** | Observes the current default output device’s volume and mute state. Open its status ring for a dedicated volume slider and mute control; Home retains its inline controls. |
-| **Battery-discharge energy** | Shows today's battery-discharge energy and a separate view for today plus the preceding six calendar days of local history. Values use mWh, Wh, or kWh according to a useful scale. |
+| **Battery-discharge energy** | Shows 30 calendar days including today, with today so far, recorded period total, peak recorded day and recorded/partial-day coverage. Select dates by click or keyboard; gaps mean no record and dashed caps mark partial days. Values use Wh below 1000 Wh and kWh at or above it, with mWh for positive readings below 10 mWh. |
 | **Codex usage (optional)** | After an explicit local opt-in, reads aggregate Codex quota windows, reset times, and available token-activity buckets through the installed Codex App Server. It can surface a quiet reminder when a limit crosses a threshold or actually resets. |
-| **Local first** | Core media, volume, and battery features require no account and have no ads, telemetry, analytics, or cloud sync. The optional Codex integration uses the user's existing local Codex sign-in only after consent. |
+| **Local first** | Core media and battery features require no account and have no ads, telemetry, analytics, or cloud sync. The optional Codex integration uses the user's existing local Codex sign-in only after consent. |
 
 > [!NOTE]
 > **Battery-discharge energy is not wall-power consumption, total device energy use, or electricity cost.** Atoll estimates energy released while a device is on battery from the capacity/discharge rate reported by Windows; AC-direct power, charging loss, desktops, and UPS devices are outside that measurement. It samples only while Atoll is running—Reef, Hidden, and a tray-resident app still count as running—and does not reconstruct time after the app exits.
@@ -39,8 +38,8 @@ Its purpose is simple: surface current media, system volume, and laptop battery-
 | State | Purpose | How it appears |
 | --- | --- | --- |
 | **Reef** | A small entry point | Default when idle with **On hover** visibility; hover to reveal the status rail, or click to open controls. |
-| **Compact** | Four status rings and the Atoll control | Hover Reef or choose **Always visible** in Settings. Hover a ring to open its detail. |
-| **Expanded** | Status rail plus Home, Media, Volume, Sources, Energy history, Codex usage, or Settings | Hover a status, click blank rail space to pin, or open controls through the shortcut or tray. Meaningful media or volume changes may also reveal controls. |
+| **Compact** | Three status rings and the Atoll control | Hover Reef or choose **Always visible** in Settings. Hover a ring to open its detail. |
+| **Expanded** | Status rail plus Home, Media, Sources, Energy history, Codex usage, or Settings | Hover a status, click blank rail space to pin, or open controls through the shortcut or tray. Meaningful media changes may also reveal controls. |
 | **Hidden** | The native window is fully hidden | Use Hide in Home, or let a foreground fullscreen app hide it when fullscreen auto-hide is enabled. |
 
 - Use `Ctrl + Shift + Space` or left-click the tray icon to toggle between Expanded and the active collapsed state.
@@ -48,7 +47,7 @@ Its purpose is simple: surface current media, system volume, and laptop battery-
 - Hover opens the rail and then a status detail. Clicking empty rail space pins or unpins it; the pin control is also available by keyboard. Clicking an enabled Codex ring refreshes its reading. When unpinned, leaving the notch for about 450 ms returns to Reef, or to the rail when **Always visible** is selected.
 - Event and shortcut openings retain a four-second inactivity timeout when the pointer is outside and no panel is pinned. Keyboard interaction keeps the active controls available. `Escape` collapses controls; Sources first returns to Media, while Energy or Codex first returns to Home.
 - In Settings, choose **Top**, **Bottom**, **Left**, or **Right**, and **On hover** or **Always visible**. Both preferences persist locally.
-- Select the lower battery card in Home to inspect the most recent seven days. Battery sampling itself never steals the island or opens the history view.
+- Select the lower battery card in Home to inspect the last 30 calendar days, including today. Battery sampling itself never steals the island or opens the history view.
 - When two or more application sources are available, the Media view can choose `Automatic` or pin one source. The choice lasts only for the current run.
 - Hover the **Codex** ring or choose **Codex usage** from the tray or right-click menu to open its panel. It is disabled by default; the first Enable action is the consent boundary. Routine polling never opens the notch, while a limit crossing or genuine reset may briefly surface it.
 
@@ -95,7 +94,7 @@ pnpm install --frozen-lockfile
 pnpm tauri dev
 ```
 
-`pnpm tauri dev` starts Vite and the native Tauri host together. It is the right way to validate the top-level window, media sessions, volume, tray, fullscreen policy, and battery sampling.
+`pnpm tauri dev` starts Vite and the native Tauri host together. It is the right way to validate the top-level window, media sessions, tray, fullscreen policy, and battery sampling.
 
 For frontend layout work only:
 
@@ -103,7 +102,7 @@ For frontend layout work only:
 pnpm dev
 ```
 
-Browser mode has no Windows IPC, so it cannot validate native window behavior, GSMTC, Core Audio, the tray, fullscreen detection, or battery data. Layout fixtures are available at `http://localhost:1420/?preview=expanded-media&edge=top`; use `reef`, `compact-media`, `expanded-home`, `expanded-media`, `expanded-volume`, `expanded-energy`, `expanded-codex`, `expanded-sources`, or `settings`, with `top`, `bottom`, `left`, or `right`. These previews use synthetic data and do not enable the native Codex integration.
+Browser mode has no Windows IPC, so it cannot validate native window behavior, GSMTC, the tray, fullscreen detection, or battery data. Layout fixtures are available at `http://localhost:1420/?preview=expanded-media&edge=top`; use `reef`, `compact-media`, `expanded-home`, `expanded-media`, `expanded-energy`, `expanded-codex`, `expanded-sources`, or `settings`, with `top`, `bottom`, `left`, or `right`. These previews use synthetic data and do not enable the native Codex integration.
 
 ## Development and validation
 
@@ -134,7 +133,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
 ## Codenotch fidelity
 
-The implementation ports the source measurements at 44/117 scale, its corner-first circular contour, upright ring layout, tooltip width, palette thresholds and spring parameters. Shapes unfold over fixed-size content inside a transparent host; the same frame supplies the Windows hit region. Settings and media/volume/energy controls are Atoll extensions.
+The implementation ports the source measurements at 44/117 scale, its corner-first circular contour, upright ring layout, tooltip width, palette thresholds and spring parameters. Shapes unfold over fixed-size content inside a transparent host; the same frame supplies the Windows hit region. Settings and media/energy controls are Atoll extensions.
 
 Windows uses Segoe UI and WebView2 instead of SF Pro and SwiftUI. SVG paints true arcs; the native region uses 12 samples per quarter arc plus a two-physical-pixel antialias margin. The source implementation’s triangular tooltip tail is retained even though the design PNG shows a curved join. This is a faithful design port, not a claim of identical platform pixels. See [fidelity evidence](docs/codenotch-fidelity.md) and [upstream notices](THIRD_PARTY_NOTICES.md).
 
@@ -167,7 +166,7 @@ Atoll has a WebView frontend and a native Windows host that collaborate through 
 | Location | Responsibility |
 | --- | --- |
 | [`src/`](src/) | TypeScript: app state, domain rules, templates, CSS, Tauri frontend integration, and status-island geometry. |
-| [`src-tauri/`](src-tauri/) | Rust: native windowing, GSMTC media aggregation, Core Audio, fullscreen detection, energy sampling, optional local Codex App Server bridge, tray controls, and NSIS configuration. |
+| [`src-tauri/`](src-tauri/) | Rust: native windowing, GSMTC media aggregation, fullscreen detection, energy sampling, optional local Codex App Server bridge, tray controls, and NSIS configuration. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Module boundaries, dependency direction, and IPC contracts. |
 | [`DESIGN.md`](DESIGN.md) | The visual system, geometry, material, state, and motion contract. |
 
@@ -194,7 +193,7 @@ Add a provider only when a source does not publish GSMTC or it can truly add dat
 
 ## Local data and privacy
 
-- Core media, volume, and battery features require no account, and their data is not sent to the network.
+- Core media and battery features require no account, and their data is not sent to the network.
 - Settings live in local WebView storage.
 - Battery-discharge totals and up to 30 completed days of history live at `%LOCALAPPDATA%\com.tsaiggo.atoll\energy-state.json`. Deleting that file resets energy history.
 - Codex usage is disabled by default. When you enable it, Atoll starts the locally installed `codex app-server` over private stdio and requests only aggregate quota windows, reset times, and token-activity buckets from the current Codex sign-in. It does not read prompts, files, account IDs, API keys, cookies, or credential files; it does not call login, logout, or consume a reset credit.
@@ -209,7 +208,7 @@ First check whether the player appears in the Windows system media panel. Atoll 
 
 ### Why is the battery card unavailable, partial, or showing a very small value?
 
-The card is available only when Windows reports battery capacity. On first launch, after sleep, after a sampling gap of roughly three minutes or more, or while a driver temporarily withholds data, Atoll keeps known data and marks the day as a partial record instead of estimating the gap. Below 10 Wh it shows Wh or mWh, so a short interval is not rounded to the same `0.01 kWh` value.
+Today’s reading is available only when Windows reports battery capacity; the history panel can still show saved records while current battery data is unavailable. On first launch, after sleep, after a sampling gap of roughly three minutes or more, or while a driver temporarily withholds data, Atoll keeps known data and marks the day as a partial record instead of estimating the gap. Readings below 1000 Wh use Wh; readings at or above 1000 Wh use kWh. Positive values below 10 mWh retain mWh so tiny recorded changes remain visible. The panel totals only recorded data within today plus the previous 29 calendar days; gaps are not estimates or zeroes, and coverage reports how many days have data and how many are partial.
 
 ### Why is Codex usage unavailable or not showing a reset time?
 

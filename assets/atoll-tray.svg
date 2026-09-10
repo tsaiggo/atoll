@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <rect x="16" y="16" width="992" height="992" rx="244" fill="#171A1F" stroke="#3C424B" stroke-width="24"/>
-  <g transform="translate(80 80) scale(5.4)">
-    <path fill="#78E2D1" fill-rule="evenodd" clip-rule="evenodd" d="M80 11C40 11 13 42 13 80C13 121 41 149 80 149C120 149 147 119 147 79C147 64 144 51 139 41C128 40 118 43 110 49C102 56 98 66 97 78C93 53 97 29 106 14C98 12 89 11 80 11ZM67 51C49 51 38 64 38 81C38 99 49 112 67 112C85 112 97 99 97 81C97 64 85 51 67 51Z"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <title>Atoll tray — Floating Island</title>
+  <rect x="1" y="5" width="22" height="14" rx="7" fill="#101114" stroke="#FFFFFF" stroke-width="1.2"/>
+  <circle cx="6" cy="12" r="1.4" fill="#FFFFFF"/>
+  <path d="M13 12v2M16 9v5M19 10.5V14" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"/>
 </svg>
