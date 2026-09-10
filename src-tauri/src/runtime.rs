@@ -41,6 +41,17 @@ pub(crate) struct RuntimeState {
     transition_epoch: AtomicU64,
     window_mutation: Mutex<()>,
     shell_layout: Mutex<Option<ShellLayout>>,
+    shell_dark_mode: Mutex<Option<bool>>,
+}
+
+pub(crate) fn update_shell_dark_mode(state: &RuntimeState, dark: bool) -> bool {
+    let mut previous = state
+        .shell_dark_mode
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let changed = *previous != Some(dark);
+    *previous = Some(dark);
+    changed
 }
 
 pub(crate) fn next_transition_epoch(state: &RuntimeState) -> u64 {

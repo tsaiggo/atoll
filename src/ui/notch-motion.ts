@@ -147,7 +147,16 @@ class NotchAnimator {
     bubble?.setAttribute("d",parts.slice(1).join(" Z"));
     if (bubble) bubble.style.opacity=String(this.from?.panel && this.target?.panel ? 1 : this.target?.panel ? amount : 1-amount);
     const hits=this.root.querySelector(".notch-hit-regions");
-    if (hits) hits.innerHTML=frame.regions.map(r=>`<polygon points="${r.points.map(p=>`${p.x},${p.y}`).join(" ")}" />`).join("");
+    if (hits) {
+      // Keep hit targets alive throughout a transition. Replacing them every
+      // frame generates artificial enter/leave events under a stationary mouse.
+      while (hits.children.length>frame.regions.length) hits.lastElementChild?.remove();
+      frame.regions.forEach((r,index)=>{
+        let polygon=hits.children[index];
+        if (!polygon) { polygon=document.createElementNS("http://www.w3.org/2000/svg","polygon");hits.append(polygon); }
+        polygon.setAttribute("points",r.points.map(p=>`${p.x},${p.y}`).join(" "));
+      });
+    }
     // Keep contents at their full layout size; only their clip changes.
     for (const rail of this.root.querySelectorAll<HTMLElement>(".notch-rail")) {
       const x=parseFloat(rail.style.left),y=parseFloat(rail.style.top);

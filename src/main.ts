@@ -28,9 +28,7 @@ import {
   type NativeMediaUpdatePayload,
   type NativeCodexUsagePayload,
   type NativeEnergyPayload,
-  type NativeVolumePayload,
   type ShellState,
-  type VolumeStatus,
 } from "./domain";
 import {
   commandPendingMessage,
@@ -54,8 +52,6 @@ import {
   runNativeMediaCommand,
   runNativeMediaSeek,
   selectNativeMediaSource,
-  setNativeSystemMute,
-  setNativeSystemVolume,
   setNativeMenuLanguage,
   setNativeCodexUsageEnabled,
   showNativeContextMenu,
@@ -96,8 +92,8 @@ if (previewMode && isNotchEdge(previewEdge)) settings = { ...settings, notchEdge
 let pointerInside = false;
 let keyboardNavigation = false;
 let suppressNotchMotion = false;
-let volumeEditing = false;
-let deferredRender = false;
+
+
 let notchPinned = false;
 let notchHoverId: number | null = null;
 let notchLeaveId: number | null = null;
@@ -113,7 +109,6 @@ let mediaConnection: MediaConnection = {
   sources: [],
   manualSource: null,
 };
-let volume: VolumeStatus = { level: 0, muted: false };
 let energy: EnergyStatus = {
   available: false,
   todayMwh: 0,
@@ -141,7 +136,6 @@ let expandedExpiryId: number | null = null;
 let expandedExpiryDeadline = 0;
 let expandedSessionRevision = 0;
 let mediaProgressTickId: number | null = null;
-let volumeVisibleUntil = 0;
 let lastMediaIdentity = "";
 let mediaEventsReady = false;
 let pendingMediaCommand: MediaCommand | null = null;
@@ -154,7 +148,6 @@ let pendingCodexUsageAction: "enable" | "disable" | "refresh" | null = null;
 let codexUsageTickId: number | null = null;
 let codexUsageActivationPending = false;
 const surfacedCodexUsageSignals = new Set<string>();
-let volumeCommandRevision = 0;
 let mediaCommandFeedback: MediaCommandFeedback | null = null;
 let mediaCommandFeedbackId: number | null = null;
 let firstRun = previewMode ? false : consumeFirstRun();
@@ -175,7 +168,6 @@ function isPreviewMode(value: string | null): value is PreviewMode {
     value === "compact-media" ||
     value === "expanded-home" ||
     value === "expanded-media" ||
-    value === "expanded-volume" ||
     value === "expanded-energy" ||
     value === "expanded-codex" ||
     value === "expanded-sources" ||
@@ -244,13 +236,17 @@ async function startApplication(): Promise<void> {
       onCodexUsage: updateCodexUsage,
       onEnergy: updateEnergy,
       onMediaUpdate: updateMediaConnect,
-      onVolume: updateVolume,
       onFullscreenChanged: (payload) => {
         fullscreen = payload.fullscreen;
         if (!fullscreen) fullscreenOverride = false;
         reconcilePresentation();
       },
       onShellSettled: () => {},
+      onPointerPresence: (inside) => {
+        if (shell === "hidden") return;
+        if (inside && !pointerInside) onNotchEnter();
+        else if (!inside && pointerInside) onNotchLeave();
+      },
     }).catch((error: unknown) => {
       console.warn("Atoll event bridge unavailable", error);
       return null;
@@ -283,7 +279,6 @@ async function startApplication(): Promise<void> {
 
 function configurePreview(mode: PreviewMode): void {
   media = { ...DEMO_MEDIA };
-  volume = { level: 0.68, muted: false };
   energy = { ...DEMO_ENERGY };
   codexUsage = {
     ...DEMO_CODEX_USAGE,
@@ -315,11 +310,6 @@ function configurePreview(mode: PreviewMode): void {
     case "expanded-media":
       content = "media";
       expandedPanel = "media";
-      previewShell = "expanded";
-      break;
-    case "expanded-volume":
-      content = "volume";
-      expandedPanel = "volume";
       previewShell = "expanded";
       break;
     case "expanded-energy":
@@ -359,7 +349,7 @@ function clearNotchLeave(): void {
 
 function notchInteractionPending(): boolean {
   return pendingMediaCommand !== null || pendingMediaSeek !== null ||
-    mediaSeekEditing || volumeEditing || pendingSourceSelection || pendingCodexUsageAction !== null;
+    mediaSeekEditing || pendingSourceSelection || pendingCodexUsageAction !== null;
 }
 
 function onNotchEnter(): void {
@@ -390,7 +380,7 @@ function scheduleNotchLeave(): void {
 }
 
 function panelFromValue(value: string | undefined): ExpandedPanel | null {
-  return value === "media" || value === "volume" || value === "energy" ||
+  return value === "media" || value === "energy" ||
     value === "codex" || value === "settings" || value === "home" ? value : null;
 }
 
@@ -434,7 +424,7 @@ async function openNotchPanel(panel: ExpandedPanel, pin = false): Promise<void> 
   if (pin) notchPinned = true;
   if (panel === "energy" && !selectedEnergyDayKey) selectedEnergyDayKey = energy.dayKey || null;
   expandedPanel = panel;
-  content = panel === "media" ? "media" : panel === "volume" ? "volume" : panel === "settings" ? "settings" : "idle";
+  content = panel === "media" ? "media" : panel === "settings" ? "settings" : "idle";
   if (shell === "expanded") render();
   else await setShell("expanded");
 }
@@ -455,7 +445,7 @@ function onClick(event: MouseEvent): void {
     return;
   }
   // Native range inputs own their pointer interaction. Letting the shell-level
-  // click handler see one would make a volume adjustment collapse Atoll.
+  // click handler see one would make a seek adjustment collapse Atoll.
   if (target.closest<HTMLElement>("[data-control]")) {
     event.stopPropagation();
     return;
@@ -479,15 +469,10 @@ function onExpandedActivity(event?: Event): void {
   if (target instanceof HTMLInputElement && target.dataset.control === "media-seek") {
     mediaSeekEditing = true;
   }
-  if (target instanceof HTMLInputElement && target.dataset.control === "system-volume") volumeEditing = true;
   resetExpandedExpiry();
 }
 
 function endMediaSeekEditing(event: PointerEvent): void {
-  if (volumeEditing) {
-    volumeEditing = false;
-    window.setTimeout(() => { if (deferredRender) render(); }, 0);
-  }
   const target = event.target;
   if (target instanceof HTMLInputElement && target.dataset.control === "media-seek") {
     mediaSeekEditing = false;
@@ -497,23 +482,6 @@ function endMediaSeekEditing(event: PointerEvent): void {
 function onInput(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
-  if (target.dataset.control === "system-volume") {
-    volumeEditing = true;
-    const level = volumeLevelFromControl(target.value);
-    if (level === null) return;
-
-    const percentage = Math.round(level * 100);
-    target.style.setProperty("--volume-level", `${percentage}%`);
-    target.setAttribute(
-      "aria-valuetext",
-      copyFor(settings.language).volume.accessibleValue(percentage, volume.muted),
-    );
-    target.parentElement
-      ?.querySelector<HTMLOutputElement>("[data-volume-value]")
-      ?.replaceChildren(String(percentage));
-    resetExpandedExpiry();
-    return;
-  }
   if (target.dataset.control !== "media-seek") return;
 
   const current = media;
@@ -528,12 +496,6 @@ function onInput(event: Event): void {
 function onChange(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLInputElement)) return;
-  if (target.dataset.control === "system-volume") {
-    volumeEditing = false;
-    const level = volumeLevelFromControl(target.value);
-    if (level !== null) void setSystemVolume(level);
-    return;
-  }
   if (target.dataset.control !== "media-seek") return;
 
   const current = media;
@@ -652,9 +614,6 @@ async function runAction(action: string, value?: string): Promise<void> {
     case "media-next":
       await sendMediaCommand(action.replace("media-", "") as MediaCommand);
       break;
-    case "toggle-volume-mute":
-      await setSystemMute(!volume.muted);
-      break;
     case "toggle-setting":
       toggleSetting(value);
       break;
@@ -742,11 +701,6 @@ function applyExternalAction(action: string): void {
         },
         true,
       );
-      break;
-    case "demo:volume":
-      manuallyHidden = false;
-      demoOverride = "volume";
-      updateVolume({ level: 0.68, muted: false });
       break;
   }
 }
@@ -844,17 +798,6 @@ function surfaceEvent(panel: ExpandedPanel): void {
   }
   expandedPanel = panel;
   void setShell("expanded");
-}
-
-function updateVolume(payload: NativeVolumePayload): void {
-  volume = {
-    level: Math.min(1, Math.max(0, payload.level)),
-    muted: payload.muted,
-  };
-  if (payload.initial) return;
-  volumeVisibleUntil = Date.now() + 1800;
-  surfaceEvent("volume");
-  scheduleVisibleTransientExpiry();
 }
 
 function updateEnergy(payload: NativeEnergyPayload): void {
@@ -1045,12 +988,6 @@ function sameEnergyHistory(
   );
 }
 
-function volumeLevelFromControl(value: string): number | null {
-  const percentage = Number(value);
-  if (!Number.isFinite(percentage)) return null;
-  return Math.min(1, Math.max(0, percentage / 100));
-}
-
 function mediaSeekPositionFromControl(
   control: HTMLInputElement,
   current: MediaStatus,
@@ -1079,51 +1016,6 @@ function previewMediaSeek(
     .closest(".media-progress")
     ?.querySelector<HTMLElement>("[data-media-elapsed]")
     ?.replaceChildren(formatPlaybackTime(positionMs));
-}
-
-async function setSystemVolume(level: number): Promise<void> {
-  const previous = volume;
-  const revision = ++volumeCommandRevision;
-  volume = { ...volume, level };
-
-  if (!nativeRuntime || demoOverride === "volume") {
-    updateVolume({ level, muted: volume.muted });
-    return;
-  }
-
-  let accepted = false;
-  try {
-    accepted = await setNativeSystemVolume(level);
-  } catch (error: unknown) {
-    console.warn("Unable to change system volume", error);
-  }
-  if (!accepted && revision === volumeCommandRevision) {
-    volume = previous;
-    render();
-  }
-}
-
-async function setSystemMute(muted: boolean): Promise<void> {
-  const previous = volume;
-  const revision = ++volumeCommandRevision;
-  volume = { ...volume, muted };
-  render();
-
-  if (!nativeRuntime || demoOverride === "volume") {
-    updateVolume({ level: volume.level, muted });
-    return;
-  }
-
-  let accepted = false;
-  try {
-    accepted = await setNativeSystemMute(muted);
-  } catch (error: unknown) {
-    console.warn("Unable to change system mute state", error);
-  }
-  if (!accepted && revision === volumeCommandRevision) {
-    volume = previous;
-    render();
-  }
 }
 
 function scheduleMediaProgressTick(): void {
@@ -1183,11 +1075,8 @@ function reconcilePresentation(
     void setShell("hidden", animate);
     return;
   }
-  const now = Date.now();
   if (demoOverride === "idle") {
     content = "idle";
-  } else if (now < volumeVisibleUntil) {
-    content = "volume";
   } else if (firstRun) {
     content = "welcome";
   } else {
@@ -1221,7 +1110,7 @@ function collapse(): void {
 async function setShell(next: ShellState, animated = !reducedMotion.matches, forceNative = false): Promise<void> {
   const previous = shell;
   if (next === "hidden") {
-    pointerInside = false;volumeEditing = false;deferredRender = false;
+    pointerInside = false;
     clearNotchHover();clearNotchLeave();
   }
   if (next !== "expanded") clearExpandedExpiry();
@@ -1284,9 +1173,7 @@ function setTransientExpiry(milliseconds: number): void {
   transientExpiryId = window.setTimeout(() => {
     transientExpiryId = null;
     firstRun = false;
-    demoOverride = demoOverride === "volume" ? null : demoOverride;
     reconcilePresentation();
-    scheduleVisibleTransientExpiry();
   }, milliseconds);
 }
 
@@ -1294,13 +1181,6 @@ function clearTransientExpiry(): void {
   if (transientExpiryId === null) return;
   window.clearTimeout(transientExpiryId);
   transientExpiryId = null;
-}
-
-function scheduleVisibleTransientExpiry(): void {
-  clearTransientExpiry();
-  const now = Date.now();
-  const deadline = now < volumeVisibleUntil ? volumeVisibleUntil : 0;
-  if (deadline > now) setTransientExpiry(deadline - now);
 }
 
 function setExpandedExpiry(): void {
@@ -1319,7 +1199,7 @@ function scheduleExpandedExpiry(sessionRevision: number): void {
       pendingMediaCommand !== null ||
       pendingMediaSeek !== null ||
       mediaSeekEditing ||
-      volumeEditing || pendingSourceSelection || pendingCodexUsageAction !== null || pointerInside || notchPinned || (keyboardNavigation && app.contains(document.activeElement))
+      pendingSourceSelection || pendingCodexUsageAction !== null || pointerInside || notchPinned || (keyboardNavigation && app.contains(document.activeElement))
     ) {
       expandedExpiryDeadline = Date.now() + EXPANDED_AUTO_COLLAPSE_MS;
       scheduleExpandedExpiry(sessionRevision);
@@ -1562,12 +1442,6 @@ function preferredExpandedPanel(): ExpandedPanel {
 }
 
 function render(): void {
-  if (volumeEditing && shell !== "hidden") {
-    deferredRender = true;
-    return;
-  }
-  deferredRender = false;
-
   const now = Date.now();
   const vm: AppViewModel = {
     shell,
@@ -1576,7 +1450,6 @@ function render(): void {
     expandedPanel,
     media,
     mediaConnection,
-    volume,
     energy,
     codexUsage,
     selectedEnergyDayKey,
@@ -1586,7 +1459,6 @@ function render(): void {
     pendingSourceSelection,
     pendingCodexUsageAction,
     mediaCommandFeedback,
-    showInlineVolume: now < volumeVisibleUntil,
     animateContent: animateNextShellContent,
     motionDisabled: reducedMotion.matches || suppressNotchMotion,
     now,

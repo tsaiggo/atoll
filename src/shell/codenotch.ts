@@ -13,7 +13,7 @@ export const CODENOTCH = {
   barHeight: px(10.5), bodyFont: px(18) / 0.714,
 } as const;
 
-export function notchMetrics(vertical: boolean, count = 4) {
+export function notchMetrics(vertical: boolean, count = 3) {
   const c = CODENOTCH;
   const cellHeight = c.ring + c.labelGap + c.labelLine;
   const cellAlong = vertical ? cellHeight : c.ring;

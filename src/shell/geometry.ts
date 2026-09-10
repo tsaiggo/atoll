@@ -44,6 +44,19 @@ export function canonicalNotch(depth: number, length: number): Point[] {
 export function pathFor(points: Point[]): string {
   const area = points.reduce((sum,p,i)=>{ const n=points[(i+1)%points.length]; return sum+p.x*n.y-n.x*p.y; },0);
   const contour = area < 0 ? [...points].reverse() : points;
+  // These contours consist of four sampled quarter circles. Paint true SVG
+  // arcs while retaining the bounded point samples for native hit testing.
+  if (contour.length === 52) {
+    let path = "";
+    for (let i=0;i<4;i++) {
+      const a=contour[i*13], mid=contour[i*13+6], b=contour[i*13+12];
+      const radius=Math.hypot(b.x-a.x,b.y-a.y)/Math.SQRT2;
+      const sweep=(mid.x-a.x)*(b.y-mid.y)-(mid.y-a.y)*(b.x-mid.x)>0?1:0;
+      path+=`${i?" L":"M"}${a.x.toFixed(3)},${a.y.toFixed(3)} `;
+      path+=radius>0.001?`A${radius.toFixed(3)},${radius.toFixed(3)} 0 0 ${sweep} ${b.x.toFixed(3)},${b.y.toFixed(3)}`:`L${b.x.toFixed(3)},${b.y.toFixed(3)}`;
+    }
+    return path+" Z";
+  }
   return contour.map((p,i)=>`${i?"L":"M"}${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(" ")+" Z";
 }
 export function notchGeometry(state: Exclude<ShellState,"hidden">, edge: NotchEdge="top", panelKey="home"): NotchGeometry {
@@ -51,7 +64,7 @@ export function notchGeometry(state: Exclude<ShellState,"hidden">, edge: NotchEd
   const folded = state === "reef", expanded = state === "expanded", m=notchMetrics(vertical);
   const depth=folded?C.pillDepth:m.depth, length=folded?C.pillLength:m.length;
   const panelWidth=panelKey==="settings"?360:panelKey==="sources"||panelKey==="home"?300:C.cardWidth;
-  const panelHeight=panelKey==="settings"?320:panelKey==="volume"?120:panelKey==="media"||panelKey==="codex"?176:panelKey==="energy"?224:210;
+  const panelHeight=panelKey==="settings"?320:panelKey==="media"||panelKey==="codex"?176:panelKey==="energy"?320:210;
   // Symmetric slack keeps the rail still across all detail changes. Only the
   // actual contours intercept desktop clicks inside the transparent host.
   const slack=vertical?88:208, hostAlong=m.length+2*slack;
@@ -82,7 +95,7 @@ export function notchGeometry(state: Exclude<ShellState,"hidden">, edge: NotchEd
   regions.push({points:roundedRect(hot,C.orbHotZone/2)});
   let panel:SurfaceRect|null=null,anchor:Point|null=null;
   if(expanded){
-    const index=panelKey==="media"||panelKey==="sources"?0:panelKey==="volume"?1:panelKey==="energy"?2:3;
+    const index=panelKey==="media"||panelKey==="sources"?0:panelKey==="energy"?1:2;
     const along=slack+(panelKey==="settings"?length-C.curl:m.centers[index]);
     const panelAlong=vertical?panelHeight:panelWidth, panelAcross=vertical?panelWidth:panelHeight;
     const start=Math.min(hostAlong-panelAlong-16,Math.max(16,along-panelAlong/2));

@@ -24,10 +24,19 @@ for(const edge of ["top","right","bottom","left"]) {
  assert.equal(await page.locator("#app").getAttribute("data-notch-frame-error"),null);
  const dom=await page.evaluate(()=>{
   const box=s=>{const r=document.querySelector(s).getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}};
-  return{width:innerWidth,height:innerHeight,rail:box(".notch-rail"),panel:box(".notch-detail"),orb:box(".notch-settings")};
+  const edgeSamples=[];
+  for(const path of document.querySelectorAll('.notch-outline,.notch-bubble-outline')) {
+    const length=path.getTotalLength(), matrix=path.getScreenCTM();
+    for(let i=0;i<32;i++) {
+      const p=path.getPointAtLength(length*(i+.5)/32).matrixTransform(matrix);
+      if(p.x>2&&p.x<innerWidth-2&&p.y>2&&p.y<innerHeight-2) edgeSamples.push({x:p.x,y:p.y});
+    }
+  }
+  return{width:innerWidth,height:innerHeight,rail:box(".notch-rail"),panel:box(".notch-detail"),orb:box(".notch-settings"),edgeSamples};
  });
  const center=(r,name)=>({name,x:r.x+r.width/2,y:r.y+r.height/2,expected:true});
  const probes=[center(dom.rail,"rail"),center(dom.panel,"detail"),center(dom.orb,"settings"),{name:"transparent desktop corner",x:edge==="top"||edge==="bottom"?1:150,y:edge==="bottom"?dom.height-50:edge==="top"?50:1,expected:false}];
+ for(const [index,p] of dom.edgeSamples.entries()) for(const delta of [-.4,.4]) probes.push({name:`antialias fringe ${index} ${delta}`,x:p.x+delta,y:p.y+delta,expected:true});
  writeFileSync("artifacts/codenotch/native-probes.json",JSON.stringify(probes));
  const raw=execFileSync(pwsh,["-NoProfile","-File","scripts/inspect-native-window.ps1","-AppProcessId",String(pid),"-ProbeFile","artifacts/codenotch/native-probes.json"],{encoding:"utf8",windowsHide:true});
  const native=JSON.parse(raw.trim().replace(/^\uFEFF/,""));

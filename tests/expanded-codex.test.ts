@@ -38,7 +38,6 @@ function viewModel(codexUsage: object, expandedPanel = "codex") {
     expandedPanel,
     media: null,
     mediaConnection: { status: "no_session", sessionCount: 0, sources: [], manualSource: null },
-    volume: { level: 0.5, muted: false },
     energy: {
       available: false,
       todayMwh: 0,
@@ -56,7 +55,6 @@ function viewModel(codexUsage: object, expandedPanel = "codex") {
     pendingSourceSelection: false,
     pendingCodexUsageAction: null,
     mediaCommandFeedback: null,
-    showInlineVolume: false,
     animateContent: false,
     motionDisabled: false,
     now: NOW,

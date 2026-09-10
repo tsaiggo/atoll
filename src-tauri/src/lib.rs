@@ -5,7 +5,6 @@ mod energy;
 mod fullscreen;
 mod runtime;
 mod shell;
-mod volume;
 
 use tauri::Manager;
 
@@ -36,9 +35,9 @@ pub fn run() {
             codex_usage::start(app.handle().clone());
             connect::start(app.handle().clone());
             energy::start_watcher(app.handle().clone());
-            volume::start_watcher(app.handle().clone());
             fullscreen::start_watcher(app.handle().clone());
             shell::start_display_watcher(app.handle().clone());
+            shell::start_pointer_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -53,8 +52,6 @@ pub fn run() {
             connect::media_select_source,
             connect::media_status,
             energy::energy_status,
-            volume::set_system_volume,
-            volume::set_system_mute,
             fullscreen::is_fullscreen_active
         ])
         .run(tauri::generate_context!())

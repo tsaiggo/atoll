@@ -55,7 +55,6 @@
   --media-primary-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
   --shell-tint-neutral: transparent;
   --shell-tint-media: transparent;
-  --shell-tint-volume: transparent;
   --text: #f5f7fb;
   --muted: #c4c8d1;
   --quiet: #9299a7;
@@ -484,25 +483,6 @@ button:focus-visible {
   height: 66%;
 }
 
-.volume__stack {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.volume__label {
-  display: flex;
-  justify-content: space-between;
-  color: var(--muted);
-  font-size: 10.5px;
-}
-
-.volume__label strong {
-  color: var(--text);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
 .meter {
   width: 114px;
   height: 3px;
@@ -759,7 +739,7 @@ button:focus-visible {
   padding: 8px;
 }
 
-/* Home is a two-widget overview. The top tile carries identity, volume, and
+/* Home is a two-widget overview. The top tile carries identity and
    playback; the lower tile is deliberately quieter so energy remains legible
    without becoming a dashboard metric. */
 .home-card .expanded__header {
@@ -1035,97 +1015,6 @@ button:focus-visible {
 .text-button .icon {
   width: 13px;
   height: 13px;
-}
-
-.inline-volume {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 9.5px;
-  flex: 0 0 auto;
-}
-
-.inline-volume__mute {
-  width: 22px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  padding: 0;
-  color: var(--muted);
-  border-radius: 50%;
-  background: transparent;
-  cursor: pointer;
-  transition:
-    color 120ms ease-out,
-    background-color 120ms ease-out,
-    transform 100ms ease-out;
-}
-
-.inline-volume__mute:hover {
-  color: var(--text);
-  background: var(--widget-control-surface);
-}
-
-.inline-volume__mute[aria-pressed="true"] {
-  color: var(--text);
-}
-
-.inline-volume__mute .icon {
-  width: 13px;
-  height: 13px;
-}
-
-.inline-volume__range {
-  width: 48px;
-  height: 22px;
-  margin: 0;
-  padding: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    var(--meter-fill) 0 var(--volume-level),
-    var(--meter-track) var(--volume-level) 100%
-  );
-  cursor: pointer;
-}
-
-.inline-volume__range::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.inline-volume__range::-webkit-slider-thumb {
-  width: 10px;
-  height: 10px;
-  margin-top: -3.5px;
-  appearance: none;
-  -webkit-appearance: none;
-  border: 1px solid var(--widget-backplate-stroke);
-  border-radius: 50%;
-  background: var(--island-primary-fill);
-  box-shadow: var(--widget-control-shadow);
-}
-
-.inline-volume__range:hover::-webkit-slider-thumb {
-  transform: scale(1.08);
-}
-
-.inline-volume__range:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.inline-volume__value {
-  width: 18px;
-  color: var(--text);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }
 
 .expanded__header--media {
@@ -2315,8 +2204,7 @@ button.setting-row:hover {
   animation: island-content-reveal 150ms var(--ease-island) 56ms both;
 }
 
-.compact.shell-entering .compact__copy,
-.compact.shell-entering .volume__stack {
+.compact.shell-entering .compact__copy{
   animation: island-content-reveal 150ms var(--ease-island) 76ms both;
 }
 
@@ -2588,8 +2476,7 @@ button.setting-row:hover {
 .notch-detail .energy-card,
 .notch-detail .codex-card,
 .notch-detail .settings-card,
-.notch-detail .source-card,
-.notch-detail .volume-card {
+.notch-detail .source-card{
   width: 100%;
   height: 100%;
   min-height: 230px;
@@ -2657,20 +2544,12 @@ button.setting-row:hover {
 .settings__hint { color: #a1a1a1; margin: 12px 0 2px; font-size: 10px; line-height: 16px; }
 .notch-detail .source-card { grid-template-rows: 48px minmax(0, 1fr); }
 .notch-detail .source-list { min-height: 0; overflow: auto; }
-.volume-card__readout { display: flex; align-items: baseline; gap: 10px; grid-column: 1 / -1; }
-.volume-card__readout > span { color: #b3b3b3; font-size: 11px; }
-.volume-card__value { font-size: 32px; font-weight: 560; font-variant-numeric: tabular-nums; line-height: 40px; }
-.volume-card__value > span { font-size: 16px; }
-.volume-card__controls { display: grid; align-content: center; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; }
-.volume-card__range { align-self: center; width: 100%; }
-.volume-card__mute { width: 30px; height: 30px; }
 .notch-detail .codex-usage__meter { background: #303030; }
 .notch-detail .codex-usage__meter > span { background: #ffffff; }
 .notch-detail .source-label--feedback { color: #ffffff; }
 .notch-detail .icon-button,
 .notch-detail .media-button,
-.notch-detail .source-trigger,
-.notch-detail .inline-volume__mute { box-shadow: none; }
+.notch-detail .source-trigger{ box-shadow: none; }
 .notch-detail .expanded.shell-entering * { animation: none; }
 .notch-entering .notch-rings { animation: notch-reveal 180ms cubic-bezier(.16,1,.3,1); }
 @keyframes notch-reveal { from { opacity: .55; } to { opacity: 1; } }
@@ -2693,11 +2572,6 @@ button.setting-row:hover {
   .notch-ring, .notch-settings { color: ButtonText; }
   .notch-ring__glyph, .notch-ring__value { color: ButtonText !important; }
 }
-
-.volume-card__title { min-width: 0; display: grid; gap: 2px; }
-.volume-card__title strong { font-size: 13px; line-height: 18px; font-weight: 600; }
-.volume-card__title small, .volume-card__muted { font-size: 10px; line-height: 15px; color: #b3b3b3; }
-.volume-card__value > small { font-size: 16px; margin-left: 2px; font-weight: 500; }
 /* Codenotch reference proportions. Geometry and CSS share the same DIP values. */
 .notch-rings { left: var(--ring-lead); top: var(--ring-margin); gap: var(--ring-spacing); }
 .notch-ring { width: 44px; height: var(--cell-height); gap: var(--ring-label-gap); border-radius: 0; }
@@ -2723,12 +2597,14 @@ button.setting-row:hover {
 .notch-settings__disc .icon { width: 21.06px; height: 21.06px; }
 .notch-settings:is(:hover,:focus-visible,[aria-expanded="true"]) .notch-settings__arc { opacity: 0; }
 .notch-settings:is(:hover,:focus-visible,[aria-expanded="true"]) .notch-settings__disc { opacity: 1; transform: none; }
-.native-runtime #app { inset: 0; transform: none; width: 100% !important; height: 100% !important; }
+/* Keep the measured DIP canvas. Stretching it to WebView2's rounded client
+   dimensions shifts curved edges away from the native mask at fractional DPI. */
+.native-runtime #app { inset: 0; transform: none; }
 .native-runtime #app[data-geometry-pending] .notch-rail,
 .native-runtime #app[data-geometry-pending] .notch-detail,
 .native-runtime #app[data-geometry-pending] .notch-settings { pointer-events: none; }
 .notch-detail .media-card, .notch-detail .energy-card, .notch-detail .codex-card,
-.notch-detail .source-card, .notch-detail .volume-card { min-height: 0; padding: 12.034px; grid-template-rows: 30px minmax(0, 1fr) 22px; }
+.notch-detail .source-card{ min-height: 0; padding: 12.034px; grid-template-rows: 30px minmax(0, 1fr) 22px; }
 .notch-detail .expanded__header { min-height: 0; gap: 6px; }
 .notch-detail .media-card { grid-template-rows: 36px minmax(0, 1fr) 20px; }
 .notch-detail .media-card .cover--expanded { width: 30px; height: 30px; border-radius: 5px; }
@@ -2739,9 +2615,6 @@ button.setting-row:hover {
 .notch-detail .media-controls { gap: 12px; }
 .notch-detail .media-button { width: 28px; height: 28px; }
 .notch-detail .media-button--primary { width: 32px; height: 32px; }
-.notch-detail .volume-card { grid-template-rows: 28px minmax(0, 1fr); }
-.notch-detail .volume-card__controls { gap: 4px 8px; }
-.notch-detail .volume-card__value { font-size: 18px; line-height: 22px; }
 .notch-detail .codex-card { grid-template-rows: 28px minmax(0, 1fr) auto; gap: 6px; }
 .notch-detail .codex-card__title small { display: none; }
 .notch-detail .codex-usage { display: flex; flex-direction: column; gap: 7.52px; padding: 0; border: 0; background: transparent; box-shadow: none; }
@@ -2784,5 +2657,24 @@ button.setting-row:hover {
 .notch-ring__visual { transition: scale 495ms var(--refresh-spring); }
 .notch-detail .codex-usage__meter > span { transition: none; }
 @media (prefers-reduced-motion: reduce) { .notch-ring__visual, .notch-settings__disc, .notch-settings__disc .icon { transition: none; } }
-.notch-detail .energy-card { grid-template-rows: 44px minmax(0, 1fr) 22px; }
+.notch-detail .energy-card { grid-template-rows: 34px auto 72px 14px 28px auto; gap: 6px; }
+.notch-detail .energy-card--empty { grid-template-rows: 34px minmax(0, 1fr) auto; }
+.energy-stats { margin: 0; padding: 6px 0 8px; display: grid; gap: 6px; border-block: 1px solid #292929; }
+.energy-stat { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; font-size: 10px; line-height: 14px; }
+.energy-stat dt { color: #dedede; }
+.energy-stat dd { margin: 0; color: #aaa; font-variant-numeric: tabular-nums; text-align: right; }
+.energy-stat:first-child dd { color: #fff; }
+.notch-detail .energy-history { grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px; padding: 0; border-bottom: 1px solid #292929; }
+.notch-detail .energy-history__day { display: flex; align-items: end; padding: 0; border-radius: 2px; }
+.notch-detail .energy-history__bar-area { width: 100%; }
+.notch-detail .energy-history__bar { width: 100%; border-radius: 2px 2px 0 0; transition: none; }
+.notch-detail .energy-history__day:focus-visible { outline: 1px solid white; outline-offset: 2px; }
+.notch-detail .energy-history__bar--partial { border-top: 2px dashed #fff; }
+.energy-history__axis { display: flex; justify-content: space-between; font-size: 9px; line-height: 12px; color: #aaa; }
+.notch-detail .energy-history__readout { margin: 0; padding: 0; border: 0; align-items: center; }
+.notch-detail .energy-history__selected-copy strong { font-size: 10px; line-height: 13px; }
+.notch-detail .energy-history__selected-copy small { font-size: 8px; line-height: 11px; }
+.notch-detail .energy-history__selected-value strong { font-size: 16px; line-height: 20px; }
+.notch-detail .energy-history__selected-value small { font-size: 9px; }
+.energy-history__legend { margin: 0; color: #aaa; font-size: 9px; line-height: 12px; }
 .notch-detail .energy-card__title small { white-space: normal; overflow: visible; text-overflow: clip; line-height: 13px; }

@@ -17,7 +17,7 @@ const near=(a,b)=>assert.ok(Math.abs(a-b)<0.001,`${a} versus ${b}`);
 const inward=(p,edge,d)=>({x:p.x+(edge==="left"?d:edge==="right"?-d:0),y:p.y+(edge==="top"?d:edge==="bottom"?-d:0)});
 
 test("every state, edge and detail fits the native polygon contract",()=>{
-  for(const edge of edges)for(const state of ["reef","compact","expanded"])for(const panel of ["media","volume","energy","codex","settings","sources","home"]){
+  for(const edge of edges)for(const state of ["reef","compact","expanded"])for(const panel of ["media","energy","codex","settings","sources","home"]){
     const g=notchGeometry(state,edge,panel);
     assert.ok(g.regions.length<=6);
     for(const r of g.regions){
@@ -58,13 +58,13 @@ test("detail changes preserve the rail in screen coordinates",()=>{
       return{x:1920-g.width+r.x,y:520-g.height/2+r.y};
     };
     const base=screen(notchGeometry("compact",edge));
-    for(const panel of ["media","volume","codex","settings"]){
+    for(const panel of ["media","codex","settings"]){
       const p=screen(notchGeometry("expanded",edge,panel));near(p.x,base.x);near(p.y,base.y);
     }
   }
 });
 test("paint leaves the tail gap clear while a narrow native corridor joins the card",()=>{
-  for(const edge of edges)for(const panel of ["media","volume","energy","codex"]){
+  for(const edge of edges)for(const panel of ["media","energy","codex"]){
     const g=notchGeometry("expanded",edge,panel);
     const paths=g.path.split(" Z").filter(p=>p.trim()).map(path=>[...path.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(m=>({x:+m[1],y:+m[2]})));
     for(let d=1;d<C.tailGap+C.tailLength+1;d++)assert.ok(hits(g,inward(g.anchor,edge,d)),edge+panel+d);
